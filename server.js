@@ -14,7 +14,8 @@ let ammoPickups = {};
 let healthPickups = {}; 
 const MAP_SEED = Math.random(); 
 
-// Game Settings
+// --- CONFIGURATION ---
+const MAX_PLAYERS = 16; // Hard Cap
 let fragLimit = 10; 
 let gameActive = true;
 let botCount = 0;
@@ -64,27 +65,28 @@ io.on('connection', (socket) => {
     socket.emit('updatePlayerList', Object.keys(players).length);
 
     socket.on('joinGame', (data) => {
+        const currentCount = Object.keys(players).length;
+        const botId = Object.keys(players).find(id => players[id].isBot);
+
+        // --- 1. CHECK SERVER CAP ---
+        if (currentCount >= MAX_PLAYERS) {
+            if (botId) {
+                // Server full, but we have a bot. Kick bot to make room.
+                delete players[botId];
+                io.emit('playerDisconnected', botId);
+            } else {
+                // Server full of humans. Reject connection.
+                socket.emit('serverMessage', 'SERVER FULL! Cannot join.');
+                return; // Stop execution
+            }
+        }
+
         const spawn = getSafeSpawn();
         const nickname = data.nickname || "Unknown";
         
-        // Host Rule Setting
         if (Object.keys(players).length === 0) {
             if(data.fragLimit) fragLimit = parseInt(data.fragLimit);
         }
-
-        // --- NEW: REPLACEMENT LOGIC ---
-        // Look for any bot in the current player list
-        const botId = Object.keys(players).find(id => players[id].isBot);
-        
-        if (botId) {
-            // If we found a bot, delete it to make room for the human
-            console.log(`Replacing ${players[botId].nickname} with human ${nickname}`);
-            delete players[botId];
-            io.emit('playerDisconnected', botId);
-            // We don't announce "disconnected" for the bot to the chat to keep it seamless, 
-            // or we could say: io.emit('serverMessage', `${players[botId].nickname} replaced by ${nickname}`);
-        }
-        // ------------------------------
 
         players[socket.id] = {
             id: socket.id, x: spawn.x, y: 5, z: spawn.z, rotation: 0,
@@ -101,6 +103,12 @@ io.on('connection', (socket) => {
     });
 
     socket.on('addBot', () => {
+        // Check Cap before adding bot
+        if (Object.keys(players).length >= MAX_PLAYERS) {
+            socket.emit('serverMessage', 'Server Full: Cannot add Bot');
+            return;
+        }
+
         const botId = 'bot_' + Math.random().toString(36).substr(2, 9);
         const spawn = getSafeSpawn();
         
