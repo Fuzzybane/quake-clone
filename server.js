@@ -11,6 +11,7 @@ app.get('/', (req, res) => {
 
 let players = {};
 let ammoPickups = {}; 
+let healthPickups = {}; // NEW: Health State
 const MAP_SEED = Math.random(); 
 
 // Game Settings
@@ -35,7 +36,17 @@ const AMMO_LOCATIONS = [
     { id: 'ammo_rg_4', x: 0, z: -90, type: 'railgun' }
 ];
 
+// NEW: Health Pack Locations (Safe spots/Corners)
+const HEALTH_LOCATIONS = [
+    { id: 'hp_1', x: 0, z: 0 },      // Dead Center
+    { id: 'hp_2', x: 90, z: 90 },    // Far Corner
+    { id: 'hp_3', x: -90, z: -90 },  // Far Corner
+    { id: 'hp_4', x: 90, z: -90 },   // Far Corner
+    { id: 'hp_5', x: -90, z: 90 }    // Far Corner
+];
+
 AMMO_LOCATIONS.forEach(loc => { ammoPickups[loc.id] = { ...loc, active: true }; });
+HEALTH_LOCATIONS.forEach(loc => { healthPickups[loc.id] = { ...loc, active: true }; });
 
 function getSafeSpawn() {
     const pick = SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
@@ -58,6 +69,7 @@ io.on('connection', (socket) => {
 
         socket.emit('mapConfig', { seed: MAP_SEED });
         socket.emit('ammoState', ammoPickups);
+        socket.emit('healthState', healthPickups); // Send health state
         socket.emit('currentPlayers', players);
         socket.broadcast.emit('newPlayer', players[socket.id]);
         io.emit('updatePlayerList', Object.keys(players).length);
@@ -110,6 +122,7 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Ammo Pickup
     socket.on('pickupAmmo', (ammoId) => {
         if (ammoPickups[ammoId] && ammoPickups[ammoId].active) {
             ammoPickups[ammoId].active = false;
@@ -120,6 +133,28 @@ io.on('connection', (socket) => {
                     io.emit('ammoRespawn', ammoId);
                 }
             }, 10000);
+        }
+    });
+
+    // NEW: Health Pickup
+    socket.on('pickupHealth', (hpId) => {
+        if (healthPickups[hpId] && healthPickups[hpId].active) {
+            const p = players[socket.id];
+            if(p && p.health < 100) {
+                healthPickups[hpId].active = false;
+                p.health = Math.min(100, p.health + 25); // Heal 25
+                
+                io.emit('healthTaken', hpId);
+                io.emit('healthUpdate', { id: socket.id, health: p.health });
+                
+                // Respawn in 15 seconds
+                setTimeout(() => {
+                    if(healthPickups[hpId]) {
+                        healthPickups[hpId].active = true;
+                        io.emit('healthRespawn', hpId);
+                    }
+                }, 15000);
+            }
         }
     });
 

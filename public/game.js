@@ -3,6 +3,7 @@ const socket = io();
 let scene, camera, renderer, controls;
 let objects = []; 
 let ammoMeshes = {}; 
+let healthMeshes = {}; // NEW: Store health packs
 let players = {}; 
 let myId;
 let myHealth = 100;
@@ -81,6 +82,12 @@ function generateTexture(type) {
     } else if(type === 'crate') { 
         ctx.fillStyle = '#333'; ctx.fillRect(0,0,512,512); ctx.strokeStyle = '#fff'; ctx.lineWidth = 10;
         ctx.strokeRect(20,20,472,472); ctx.beginPath(); ctx.moveTo(20,20); ctx.lineTo(492,492); ctx.moveTo(492,20); ctx.lineTo(20,492); ctx.stroke();
+    } else if(type === 'health') { // NEW: Health Pack Texture
+        ctx.fillStyle = '#eee'; ctx.fillRect(0,0,512,512); // White Box
+        ctx.fillStyle = '#f00'; // Red Cross
+        ctx.fillRect(180, 50, 152, 412); // Vertical
+        ctx.fillRect(50, 180, 412, 152); // Horizontal
+        ctx.strokeStyle = '#ccc'; ctx.strokeRect(0,0,512,512);
     }
     const tex = new THREE.CanvasTexture(canvas); tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; return tex;
 }
@@ -153,6 +160,7 @@ function init() {
     });
     document.addEventListener('mousedown', onShoot);
 
+    // Socket Events
     socket.on('currentPlayers', (serverPlayers) => { for (let id in serverPlayers) if (id !== socket.id) addOtherPlayer(serverPlayers[id]); });
     socket.on('newPlayer', (p) => addOtherPlayer(p));
     socket.on('playerMoved', (p) => { if (players[p.id]) { players[p.id].mesh.position.set(p.x, p.y, p.z); players[p.id].mesh.rotation.y = p.rotation; } });
@@ -167,26 +175,25 @@ function init() {
     });
     socket.on('healthUpdate', (data) => { if(data.id === socket.id) { myHealth = data.health; updateHUD(); document.body.style.boxShadow = "inset 0 0 50px red"; setTimeout(() => document.body.style.boxShadow = "none", 100); } });
     socket.on('playerRespawn', (data) => { if (data.id === socket.id) { controls.getObject().position.set(data.x, data.y, data.z); velocity.set(0,0,0); myHealth = 100; updateHUD(); } else if (players[data.id]) players[data.id].mesh.position.set(data.x, data.y, data.z); });
+    
     socket.on('ammoState', (serverAmmo) => { for(let id in serverAmmo) { createAmmoBox(serverAmmo[id]); if(!serverAmmo[id].active) ammoMeshes[id].visible = false; } });
     socket.on('ammoTaken', (id) => { if(ammoMeshes[id]) ammoMeshes[id].visible = false; });
     socket.on('ammoRespawn', (id) => { if(ammoMeshes[id]) ammoMeshes[id].visible = true; });
+
+    // NEW: Health Events
+    socket.on('healthState', (serverHp) => { for(let id in serverHp) { createHealthBox(serverHp[id]); if(!serverHp[id].active) healthMeshes[id].visible = false; } });
+    socket.on('healthTaken', (id) => { if(healthMeshes[id]) healthMeshes[id].visible = false; });
+    socket.on('healthRespawn', (id) => { if(healthMeshes[id]) healthMeshes[id].visible = true; });
 }
 
 function createFPSWeapons() {
     weaponGroup = new THREE.Group(); weaponGroup.position.set(0.4, -0.3, -0.6); camera.add(weaponGroup); 
-    // Blaster
-    const blaster = new THREE.Group();
-    blaster.add(new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 0.4), new THREE.MeshStandardMaterial({ color: 0xffff00 })));
+    const blaster = new THREE.Group(); blaster.add(new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 0.4), new THREE.MeshStandardMaterial({ color: 0xffff00 })));
     const bTip = new THREE.Object3D(); bTip.position.set(0, 0, -0.25); blaster.add(bTip); blaster.barrelTip = bTip;
-    // Shotgun
-    const shotgun = new THREE.Group();
-    shotgun.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.5), new THREE.MeshStandardMaterial({ color: 0x8B4513 })));
+    const shotgun = new THREE.Group(); shotgun.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.5), new THREE.MeshStandardMaterial({ color: 0x8B4513 })));
     const sTip = new THREE.Object3D(); sTip.position.set(0, 0.05, -0.85); shotgun.add(sTip); shotgun.barrelTip = sTip;
-    // Railgun
-    const railgun = new THREE.Group();
-    railgun.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 0.6), new THREE.MeshStandardMaterial({ color: 0x222222 })));
+    const railgun = new THREE.Group(); railgun.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 0.6), new THREE.MeshStandardMaterial({ color: 0x222222 })));
     const rTip = new THREE.Object3D(); rTip.position.set(0, 0, -1.0); railgun.add(rTip); railgun.barrelTip = rTip;
-
     weaponGroup.add(blaster); weaponGroup.add(shotgun); weaponGroup.add(railgun);
     gunModels = [blaster, shotgun, railgun]; updateWeaponVisibility();
 }
@@ -223,86 +230,8 @@ function createAmmoBox(data) {
     scene.add(m); ammoMeshes[data.id] = m; m.userData = data;
 }
 
-function createHumanoidMesh(isBot) {
-    const g = new THREE.Group(); const mat = new THREE.MeshLambertMaterial({color:isBot?0xff3333:0x33ff33});
-    g.add(new THREE.Mesh(new THREE.BoxGeometry(0.8,0.8,0.8), mat)).position.y=1.4;
-    g.add(new THREE.Mesh(new THREE.BoxGeometry(1.2,1.5,0.6), mat)).position.y=0.25;
-    const armG = new THREE.BoxGeometry(0.4, 1.5, 0.4); const lArm = new THREE.Mesh(armG, mat); lArm.position.set(-0.9, 0.25, 0); g.add(lArm); const rArm = new THREE.Mesh(armG, mat); rArm.position.set(0.9, 0.25, 0); g.add(rArm);
-    const legG = new THREE.BoxGeometry(0.5, 1.5, 0.5); const lLeg = new THREE.Mesh(legG, mat); lLeg.position.set(-0.35, -1.25, 0); g.add(lLeg); const rLeg = new THREE.Mesh(legG, mat); rLeg.position.set(0.35, -1.25, 0); g.add(rLeg);
-    const hb = new THREE.Mesh(new THREE.BoxGeometry(2,4,2), new THREE.MeshBasicMaterial({visible:false})); hb.position.y=1; g.add(hb);
-    g.traverse(o=>{if(o.isMesh)o.castShadow=true;});
-    return g;
-}
-function addOtherPlayer(p) { const m = createHumanoidMesh(p.isBot); m.position.set(p.x,p.y,p.z); scene.add(m); players[p.id]={mesh:m, info:p}; }
-
-function onShoot() {
-    if (!controls.isLocked) return;
-    const now = performance.now(); const weapon = WEAPONS[currentWeaponIdx];
-    if (now - lastShotTime < weapon.cooldown) return;
-    if (!weapon.infinite && ammoStore[currentWeaponIdx] <= 0) return;
-    lastShotTime = now; if(!weapon.infinite) ammoStore[currentWeaponIdx]--; updateHUD();
-    playSound(weapon.name); socket.emit('shoot', { type: weapon.name });
-    const gun = gunModels[currentWeaponIdx]; gun.position.z+=0.2; setTimeout(()=>gun.position.z-=0.2, 100);
-    const barrelPos = new THREE.Vector3(); if(gun.barrelTip) gun.barrelTip.getWorldPosition(barrelPos); else barrelPos.copy(controls.getObject().position);
-    const allMeshes = []; objects.forEach(o=>allMeshes.push(o)); for(let id in players) players[id].mesh.traverse(c=>{if(c.isMesh)allMeshes.push(c)}); allMeshes.push(scene.getObjectByName("floor"));
-    const pellets = weapon.count || 1;
-    for(let i=0; i<pellets; i++) {
-        raycaster.setFromCamera(new THREE.Vector2((Math.random()-0.5)*weapon.spread, (Math.random()-0.5)*weapon.spread), camera);
-        const intersects = raycaster.intersectObjects(allMeshes);
-        let end = new THREE.Vector3(); raycaster.ray.at(100, end);
-        if(intersects.length>0) { end.copy(intersects[0].point); const hitId = Object.keys(players).find(k=>{ let f=false; players[k].mesh.traverse(c=>{if(c===intersects[0].object)f=true}); return f; }); if(hitId) socket.emit('playerHit', hitId, weapon.damage); }
-        createBulletTrail(barrelPos, end, weapon.color);
-    }
-}
-function createBulletTrail(s,e,c) { const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints([s,e]), new THREE.LineBasicMaterial({color:c})); scene.add(l); setTimeout(()=>scene.remove(l), 50); }
-function checkCollision(pos) { const b=new THREE.Box3().setFromCenterAndSize(pos, new THREE.Vector3(1,4,1)); for(let o of objects) if(o.BBox && b.intersectsBox(o.BBox)) return true; return false; }
-function updateHUD() { document.getElementById('health-display').innerText = Math.max(0, myHealth); const w = WEAPONS[currentWeaponIdx]; const ac = w.infinite ? "INF" : ammoStore[currentWeaponIdx]; document.getElementById('ammo-display').innerText = `${w.name} [${ac}]`; document.getElementById('ammo-container').style.color = '#' + w.color.toString(16); }
-
-function onKeyDown(e) { 
-    if(e.code === 'Enter') {
-        const input = document.getElementById('chat-input');
-        if(!isChatting) {
-            isChatting = true; document.exitPointerLock();
-            input.style.display = 'block'; input.focus();
-            moveForward=false; moveBackward=false; moveLeft=false; moveRight=false;
-        } else {
-            const msg = input.value.trim();
-            if(msg.length > 0) socket.emit('chatMessage', msg);
-            input.value = ''; input.style.display = 'none'; isChatting = false;
-            if(gameActive) controls.lock();
-        }
-        return; 
-    }
-    if(isChatting) return;
-    if(e.code==='KeyW')moveForward=true; if(e.code==='KeyS')moveBackward=true; if(e.code==='KeyA')moveLeft=true; if(e.code==='KeyD')moveRight=true; if(e.code==='Space'&&canJump)velocity.y+=35; 
-    if(e.code==='Digit1'){currentWeaponIdx=0;updateWeaponVisibility();updateHUD();} if(e.code==='Digit2'){currentWeaponIdx=1;updateWeaponVisibility();updateHUD();} if(e.code==='Digit3'){currentWeaponIdx=2;updateWeaponVisibility();updateHUD();} 
-}
-
-function animate() {
-    requestAnimationFrame(animate); const time = performance.now(); const delta = (time-prevTime)/1000; prevTime=time;
-    for(let k in ammoMeshes) {
-        if(ammoMeshes[k].visible) {
-            ammoMeshes[k].rotation.y+=0.02; 
-            if(controls.getObject().position.distanceTo(ammoMeshes[k].position)<2.5) {
-                const t=ammoMeshes[k].userData.type; let p=false;
-                if(t==='shotgun'&&ammoStore[1]<WEAPONS[1].maxAmmo){ammoStore[1]=Math.min(ammoStore[1]+6,WEAPONS[1].maxAmmo);p=true;}
-                if(t==='railgun'&&ammoStore[2]<WEAPONS[2].maxAmmo){ammoStore[2]=Math.min(ammoStore[2]+2,WEAPONS[2].maxAmmo);p=true;}
-                if(p){socket.emit('pickupAmmo',k);ammoMeshes[k].visible=false;updateHUD();}
-            }
-        }
-    }
-    if (controls.isLocked) {
-        velocity.x -= velocity.x * 10.0 * delta; velocity.z -= velocity.z * 10.0 * delta; velocity.y -= 9.8 * 100.0 * delta; 
-        direction.z = Number(moveForward) - Number(moveBackward); direction.x = Number(moveRight) - Number(moveLeft); direction.normalize(); 
-        if (moveForward || moveBackward) velocity.z -= direction.z * 400.0 * delta; if (moveLeft || moveRight) velocity.x -= direction.x * 400.0 * delta;
-        const oldPos = controls.getObject().position.clone();
-        controls.moveRight(-velocity.x * delta); controls.moveForward(-velocity.z * delta);
-        if (checkCollision(controls.getObject().position)) { controls.getObject().position.copy(oldPos); velocity.x=0; velocity.z=0; }
-        controls.getObject().position.y += (velocity.y * delta);
-        if (controls.getObject().position.y < 2) { velocity.y = 0; controls.getObject().position.y = 2; canJump = true; }
-        socket.emit('playerMovement', { x: controls.getObject().position.x, y: controls.getObject().position.y, z: controls.getObject().position.z, rotation: camera.rotation.y });
-        if(moveForward||moveBackward||moveLeft||moveRight){ weaponGroup.position.x = 0.4 + Math.sin(time*0.01)*0.02; weaponGroup.position.y = -0.3 + Math.abs(Math.sin(time*0.015))*0.02; } else { weaponGroup.position.set(0.4,-0.3,-0.6); }
-    }
-    renderer.render(scene, camera);
-}
-window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+// NEW: Health Pack Creation
+function createHealthBox(data) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(1.5,1.5,1.5), new THREE.MeshBasicMaterial({map: generateTexture('health')}));
+    m.position.set(data.x, 1.5, data.z); 
+    scene.add(m); healthMeshes[data.id] = m; m.userData = data;
