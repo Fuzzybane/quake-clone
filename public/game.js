@@ -131,10 +131,8 @@ document.getElementById('join-btn').addEventListener('click', () => {
     socket.emit('joinGame', { nickname: nickname, fragLimit: fragLimit });
 });
 
-// NEW: Add Bot Button Handler
-document.getElementById('add-bot-btn').addEventListener('click', () => {
-    socket.emit('addBot');
-});
+document.getElementById('add-bot-btn').addEventListener('click', () => { socket.emit('addBot'); });
+document.getElementById('remove-bot-btn').addEventListener('click', () => { socket.emit('removeBot'); });
 
 function init() {
     scene = new THREE.Scene(); scene.background = new THREE.Color(0x050505); scene.fog = new THREE.Fog(0x050505, 0, 100);
@@ -266,7 +264,6 @@ function createLevel() {
     // RESTORED L-WALLS & PILLARS
     addWall(15, 15); addWall(-15, -15); addWall(15, -15); addWall(-15, 15);
     
-    // L-Shapes at +/- 40
     addWall(40, 40); addWall(40, 32); 
     addWall(40, -40); addWall(40, -32);
     addWall(-40, 40); addWall(-40, 32);
@@ -276,16 +273,16 @@ function createLevel() {
     createBorderWalls();
 
     // 2ND FLOOR (Catwalks) - Height 12
-    createPlatform(0, 55, 140, 10, 12); // North
-    createPlatform(0, -55, 140, 10, 12); // South
-    createPlatform(55, 0, 10, 100, 12); // East
-    createPlatform(-55, 0, 10, 100, 12); // West
+    createPlatform(0, 55, 140, 10, 12); 
+    createPlatform(0, -55, 140, 10, 12); 
+    createPlatform(55, 0, 10, 100, 12); 
+    createPlatform(-55, 0, 10, 100, 12); 
 
-    // RAMPS (Height 0 to 12.5)
-    createRamp(0, 37.5, 35, 12.5, 'North'); // Goes +Z
-    createRamp(0, -37.5, 35, 12.5, 'South'); // Goes -Z
-    createRamp(37.5, 0, 35, 12.5, 'East'); // Goes +X
-    createRamp(-37.5, 0, 35, 12.5, 'West'); // Goes -X
+    // RAMPS
+    createRamp(0, 37.5, 35, 12.5, 'North');
+    createRamp(0, -37.5, 35, 12.5, 'South');
+    createRamp(37.5, 0, 35, 12.5, 'East');
+    createRamp(-37.5, 0, 35, 12.5, 'West');
 }
 
 function createPlatform(x, z, w, d, h) {
@@ -340,10 +337,18 @@ function createHealthBox(data) {
     scene.add(m); healthMeshes[data.id] = m; m.userData = data;
 }
 
+// FIX: Head is now correctly assigned to variable before adding
 function createHumanoidMesh(isBot) {
     const g = new THREE.Group(); const mat = new THREE.MeshLambertMaterial({color:isBot?0xff3333:0x33ff33});
-    g.add(new THREE.Mesh(new THREE.BoxGeometry(0.8,0.8,0.8), mat)).position.y=1.4;
-    g.add(new THREE.Mesh(new THREE.BoxGeometry(1.2,1.5,0.6), mat)).position.y=0.25;
+    
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.8,0.8), mat);
+    head.position.y = 1.4;
+    g.add(head);
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.2,1.5,0.6), mat);
+    body.position.y = 0.25;
+    g.add(body);
+
     const armG = new THREE.BoxGeometry(0.4, 1.5, 0.4); const lArm = new THREE.Mesh(armG, mat); lArm.position.set(-0.9, 0.25, 0); g.add(lArm); const rArm = new THREE.Mesh(armG, mat); rArm.position.set(0.9, 0.25, 0); g.add(rArm);
     const legG = new THREE.BoxGeometry(0.5, 1.5, 0.5); const lLeg = new THREE.Mesh(legG, mat); lLeg.position.set(-0.35, -1.25, 0); g.add(lLeg); const rLeg = new THREE.Mesh(legG, mat); rLeg.position.set(0.35, -1.25, 0); g.add(rLeg);
     const hb = new THREE.Mesh(new THREE.BoxGeometry(2,4,2), new THREE.MeshBasicMaterial({visible:false})); hb.position.y=1; g.add(hb);

@@ -14,12 +14,21 @@ let ammoPickups = {};
 let healthPickups = {}; 
 const MAP_SEED = Math.random(); 
 
-// Game Settings
 let fragLimit = 10; 
 let gameActive = true;
 let botCount = 0;
 
-// Map Coordinates
+// --- MAP COLLISION DATA (Must match Client Game.js) ---
+// Simple Box Collision: x, z, width, depth (half-sizes approx 5)
+const MAP_OBSTACLES = [
+    // Center Pillars
+    { x: 15, z: 15 }, { x: -15, z: -15 }, { x: 15, z: -15 }, { x: -15, z: 15 },
+    // L-Walls (Approximated as blocks for server collision)
+    { x: 40, z: 40 }, { x: 40, z: -40 }, { x: -40, z: 40 }, { x: -40, z: -40 },
+    // Outer Pillars
+    { x: 80, z: 80 }, { x: -80, z: -80 }, { x: 80, z: -80 }, { x: -80, z: 80 }
+];
+
 const SPAWN_POINTS = [
     { x: 0, z: 0 }, { x: 20, z: 0 }, { x: -20, z: 0 }, { x: 0, z: 20 }, { x: 0, z: -20 },
     { x: 85, z: 85 }, { x: -85, z: -85 }, { x: 85, z: -85 }, { x: -85, z: 85 },
@@ -29,7 +38,7 @@ const SPAWN_POINTS = [
 const AMMO_LOCATIONS = [
     { id: 'ammo_sg_1', x: 25, z: 25, y: 1.5, type: 'shotgun' },
     { id: 'ammo_sg_2', x: -25, z: -25, y: 1.5, type: 'shotgun' },
-    { id: 'ammo_sg_3', x: 25, z: -25, y: 1.5, type: 'shotgun' },
+    { id: 'ammo_sg_3', x: 25, z: -25, type: 'shotgun' },
     { id: 'ammo_sg_4', x: -25, z: 25, y: 1.5, type: 'shotgun' },
     { id: 'ammo_rg_1', x: 90, z: 0, y: 1.5, type: 'railgun' },
     { id: 'ammo_rg_2', x: -90, z: 0, y: 1.5, type: 'railgun' },
@@ -76,17 +85,14 @@ io.on('connection', (socket) => {
         io.emit('serverMessage', `${nickname} has entered the arena`);
     });
 
-    // NEW: ADD BOT HANDLER
     socket.on('addBot', () => {
         const botId = 'bot_' + Math.random().toString(36).substr(2, 9);
         const spawn = getSafeSpawn();
         
         players[botId] = {
-            id: botId,
-            x: spawn.x, y: 5, z: spawn.z, rotation: 0,
-            nickname: `Bot_${++botCount}`,
-            health: 100, isBot: true, score: 0,
-            targetX: 0, targetZ: 0, lastShot: 0
+            id: botId, x: spawn.x, y: 5, z: spawn.z, rotation: 0,
+            nickname: `Bot_${++botCount}`, health: 100, isBot: true, score: 0,
+            targetX: 0, targetZ: 0, lastShot: 0, weapon: 'BLASTER'
         };
 
         io.emit('newPlayer', players[botId]);
@@ -94,11 +100,18 @@ io.on('connection', (socket) => {
         io.emit('serverMessage', `${players[botId].nickname} has been added`);
     });
 
-    socket.on('chatMessage', (msg) => {
-        if(players[socket.id]) {
-            io.emit('chatMessage', { name: players[socket.id].nickname, text: msg });
+    socket.on('removeBot', () => {
+        // Find last added bot
+        const botId = Object.keys(players).reverse().find(id => players[id].isBot);
+        if(botId) {
+            io.emit('serverMessage', `${players[botId].nickname} removed`);
+            delete players[botId];
+            io.emit('playerDisconnected', botId);
+            io.emit('updatePlayerList', Object.keys(players).length);
         }
     });
+
+    socket.on('chatMessage', (msg) => { if(players[socket.id]) io.emit('chatMessage', { name: players[socket.id].nickname, text: msg }); });
 
     socket.on('playerMovement', (movementData) => {
         if (players[socket.id]) {
@@ -110,9 +123,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('shoot', (weaponData) => {
-        socket.broadcast.emit('playerShot', { id: socket.id, weapon: weaponData });
-    });
+    socket.on('shoot', (weaponData) => { socket.broadcast.emit('playerShot', { id: socket.id, weapon: weaponData }); });
 
     socket.on('playerHit', (victimId, damage) => {
         if (!gameActive) return;
@@ -123,12 +134,7 @@ io.on('connection', (socket) => {
         if (ammoPickups[ammoId] && ammoPickups[ammoId].active) {
             ammoPickups[ammoId].active = false;
             io.emit('ammoTaken', ammoId);
-            setTimeout(() => {
-                if(ammoPickups[ammoId]) {
-                    ammoPickups[ammoId].active = true;
-                    io.emit('ammoRespawn', ammoId);
-                }
-            }, 10000);
+            setTimeout(() => { if(ammoPickups[ammoId]) { ammoPickups[ammoId].active = true; io.emit('ammoRespawn', ammoId); } }, 10000);
         }
     });
 
@@ -140,12 +146,7 @@ io.on('connection', (socket) => {
                 p.health = Math.min(100, p.health + 25);
                 io.emit('healthTaken', hpId);
                 io.emit('healthUpdate', { id: socket.id, health: p.health });
-                setTimeout(() => {
-                    if(healthPickups[hpId]) {
-                        healthPickups[hpId].active = true;
-                        io.emit('healthRespawn', hpId);
-                    }
-                }, 15000);
+                setTimeout(() => { if(healthPickups[hpId]) { healthPickups[hpId].active = true; io.emit('healthRespawn', hpId); } }, 15000);
             }
         }
     });
@@ -160,7 +161,6 @@ io.on('connection', (socket) => {
     });
 });
 
-// Centralized Damage Handler (Used by players AND bots)
 function handleDamage(victimId, attacker, damage) {
     const victim = players[victimId];
     if (victim) {
@@ -198,7 +198,23 @@ function endGame(winnerName) {
     }, 6000); 
 }
 
+// Check if bot hits a wall
+function checkBotWallCollision(x, z) {
+    // Arena Boundaries
+    if (x > 95 || x < -95 || z > 95 || z < -95) return true;
+
+    for(let obs of MAP_OBSTACLES) {
+        // Simple Box collision (Wall size is ~10, so radius 6 is safe)
+        if (Math.abs(x - obs.x) < 7 && Math.abs(z - obs.z) < 7) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // --- BOT AI LOOP ---
+const BOT_WEAPONS = ['BLASTER', 'SHOTGUN', 'RAILGUN'];
+
 setInterval(() => {
     if (!gameActive) return;
 
@@ -221,45 +237,65 @@ setInterval(() => {
                 }
             }
 
-            // 2. Move
+            // 2. Weapon Switch Logic (Randomly every few seconds)
+            if(Math.random() < 0.01) {
+                bot.weapon = BOT_WEAPONS[Math.floor(Math.random() * BOT_WEAPONS.length)];
+            }
+
+            // 3. Movement with Collision
             if (target && minDist < 60) {
-                // Move towards player
                 const dx = target.x - bot.x;
                 const dz = target.z - bot.z;
                 const angle = Math.atan2(dx, dz);
                 
-                bot.x += Math.sin(angle) * 0.15; // Speed
-                bot.z += Math.cos(angle) * 0.15;
-                bot.rotation = angle; // Face player
+                const nextX = bot.x + Math.sin(angle) * 0.15;
+                const nextZ = bot.z + Math.cos(angle) * 0.15;
+
+                if(!checkBotWallCollision(nextX, nextZ)) {
+                    bot.x = nextX;
+                    bot.z = nextZ;
+                }
+                bot.rotation = angle;
             } else {
-                // Wander
+                // Random wander
                 const dx = bot.targetX - bot.x;
                 const dz = bot.targetZ - bot.z;
                 const dist = Math.sqrt(dx*dx + dz*dz);
-                if (dist < 2) {
-                    bot.targetX = (Math.random() * 100) - 50;
-                    bot.targetZ = (Math.random() * 100) - 50;
+                if (dist < 2 || checkBotWallCollision(bot.x + (dx/dist), bot.z + (dz/dist))) {
+                    // Pick new random target if close or hitting wall
+                    bot.targetX = (Math.random() * 160) - 80;
+                    bot.targetZ = (Math.random() * 160) - 80;
+                } else {
+                    bot.x += (dx/dist) * 0.1;
+                    bot.z += (dz/dist) * 0.1;
+                    bot.rotation = Math.atan2(dx, dz);
                 }
-                bot.x += (dx/dist) * 0.1;
-                bot.z += (dz/dist) * 0.1;
-                bot.rotation = Math.atan2(dx, dz);
             }
 
-            // 3. Gravity
-            if(Math.random() < 0.005 && bot.y < 3) bot.y += 3; // Random Jump
+            // 4. Gravity
+            if(Math.random() < 0.005 && bot.y < 3) bot.y += 3;
             if(bot.y > 2) bot.y -= 0.1;
 
-            // 4. Shoot
-            if (target && minDist < 40) {
+            // 5. Shoot
+            if (target && minDist < 50) {
                 const now = Date.now();
-                if (now - (bot.lastShot || 0) > 1000) { // Fire every 1 sec
+                // Fire rate based on weapon
+                let cooldown = 1000;
+                let damage = 10;
+                if(bot.weapon === 'SHOTGUN') { cooldown = 1500; damage = 8; } // multiple pellets simulated by math? simple logic for now
+                if(bot.weapon === 'RAILGUN') { cooldown = 2000; damage = 40; }
+
+                if (now - (bot.lastShot || 0) > cooldown) {
                     bot.lastShot = now;
-                    // Visuals
-                    io.emit('playerShot', { id: bot.id, weapon: {type: 'BLASTER'} });
+                    io.emit('playerShot', { id: bot.id, weapon: {type: bot.weapon} });
                     
-                    // Accuracy Check (30% chance to hit)
-                    if (Math.random() < 0.3) {
-                        handleDamage(target.id, bot, 10);
+                    // Accuracy (Railgun harder to hit, Shotgun easier)
+                    let hitChance = 0.3;
+                    if(bot.weapon === 'SHOTGUN') hitChance = 0.5;
+                    if(bot.weapon === 'RAILGUN') hitChance = 0.2;
+
+                    if (Math.random() < hitChance) {
+                        handleDamage(target.id, bot, damage);
                     }
                 }
             }
