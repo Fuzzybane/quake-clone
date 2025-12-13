@@ -11,7 +11,7 @@ app.get('/', (req, res) => {
 
 let players = {};
 let ammoPickups = {}; 
-let healthPickups = {}; // NEW: Health State
+let healthPickups = {}; 
 const MAP_SEED = Math.random(); 
 
 // Game Settings
@@ -26,23 +26,27 @@ const SPAWN_POINTS = [
 ];
 
 const AMMO_LOCATIONS = [
-    { id: 'ammo_sg_1', x: 25, z: 25, type: 'shotgun' },
-    { id: 'ammo_sg_2', x: -25, z: -25, type: 'shotgun' },
-    { id: 'ammo_sg_3', x: 25, z: -25, type: 'shotgun' },
-    { id: 'ammo_sg_4', x: -25, z: 25, type: 'shotgun' },
-    { id: 'ammo_rg_1', x: 90, z: 0, type: 'railgun' },
-    { id: 'ammo_rg_2', x: -90, z: 0, type: 'railgun' },
-    { id: 'ammo_rg_3', x: 0, z: 90, type: 'railgun' },
-    { id: 'ammo_rg_4', x: 0, z: -90, type: 'railgun' }
+    // Ground Floor Shotguns
+    { id: 'ammo_sg_1', x: 25, z: 25, y: 1.5, type: 'shotgun' },
+    { id: 'ammo_sg_2', x: -25, z: -25, y: 1.5, type: 'shotgun' },
+    
+    // High Ground Railguns (The 2nd Floor Ring)
+    { id: 'ammo_rg_1', x: 0, z: 55, y: 13.5, type: 'railgun' }, // North Catwalk
+    { id: 'ammo_rg_2', x: 0, z: -55, y: 13.5, type: 'railgun' }, // South Catwalk
+    
+    // Far Edge Railguns
+    { id: 'ammo_rg_3', x: 90, z: 0, y: 1.5, type: 'railgun' },
+    { id: 'ammo_rg_4', x: -90, z: 0, y: 1.5, type: 'railgun' }
 ];
 
-// NEW: Health Pack Locations (Safe spots/Corners)
 const HEALTH_LOCATIONS = [
-    { id: 'hp_1', x: 0, z: 0 },      // Dead Center
-    { id: 'hp_2', x: 90, z: 90 },    // Far Corner
-    { id: 'hp_3', x: -90, z: -90 },  // Far Corner
-    { id: 'hp_4', x: 90, z: -90 },   // Far Corner
-    { id: 'hp_5', x: -90, z: 90 }    // Far Corner
+    { id: 'hp_1', x: 0, z: 0, y: 1.5 },      // Dead Center
+    // High Ground Health
+    { id: 'hp_2', x: 55, z: 0, y: 13.5 },    // East Catwalk
+    { id: 'hp_3', x: -55, z: 0, y: 13.5 },   // West Catwalk
+    // Outer Corners
+    { id: 'hp_4', x: 90, z: 90, y: 1.5 },    
+    { id: 'hp_5', x: -90, z: -90, y: 1.5 }
 ];
 
 AMMO_LOCATIONS.forEach(loc => { ammoPickups[loc.id] = { ...loc, active: true }; });
@@ -69,7 +73,7 @@ io.on('connection', (socket) => {
 
         socket.emit('mapConfig', { seed: MAP_SEED });
         socket.emit('ammoState', ammoPickups);
-        socket.emit('healthState', healthPickups); // Send health state
+        socket.emit('healthState', healthPickups);
         socket.emit('currentPlayers', players);
         socket.broadcast.emit('newPlayer', players[socket.id]);
         io.emit('updatePlayerList', Object.keys(players).length);
@@ -122,7 +126,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Ammo Pickup
     socket.on('pickupAmmo', (ammoId) => {
         if (ammoPickups[ammoId] && ammoPickups[ammoId].active) {
             ammoPickups[ammoId].active = false;
@@ -136,18 +139,14 @@ io.on('connection', (socket) => {
         }
     });
 
-    // NEW: Health Pickup
     socket.on('pickupHealth', (hpId) => {
         if (healthPickups[hpId] && healthPickups[hpId].active) {
             const p = players[socket.id];
             if(p && p.health < 100) {
                 healthPickups[hpId].active = false;
-                p.health = Math.min(100, p.health + 25); // Heal 25
-                
+                p.health = Math.min(100, p.health + 25);
                 io.emit('healthTaken', hpId);
                 io.emit('healthUpdate', { id: socket.id, health: p.health });
-                
-                // Respawn in 15 seconds
                 setTimeout(() => {
                     if(healthPickups[hpId]) {
                         healthPickups[hpId].active = true;

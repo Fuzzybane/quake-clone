@@ -1,9 +1,10 @@
 // --- CONFIGURATION ---
 const socket = io();
 let scene, camera, renderer, controls;
-let objects = []; 
+let objects = []; // Walls (Block Horizontal)
+let groundObjects = []; // Floors/Ramps (Block Vertical)
 let ammoMeshes = {}; 
-let healthMeshes = {}; // NEW: Store health packs
+let healthMeshes = {};
 let players = {}; 
 let myId;
 let myHealth = 100;
@@ -24,6 +25,7 @@ let velocity = new THREE.Vector3();
 let direction = new THREE.Vector3();
 let prevTime = performance.now();
 const raycaster = new THREE.Raycaster();
+const groundRaycaster = new THREE.Raycaster(); // NEW: For ramps/floors
 
 const WEAPONS = [
     { name: "BLASTER", damage: 15, cooldown: 250, color: 0xffff00, speed: 1, spread: 0, infinite: true },
@@ -82,11 +84,9 @@ function generateTexture(type) {
     } else if(type === 'crate') { 
         ctx.fillStyle = '#333'; ctx.fillRect(0,0,512,512); ctx.strokeStyle = '#fff'; ctx.lineWidth = 10;
         ctx.strokeRect(20,20,472,472); ctx.beginPath(); ctx.moveTo(20,20); ctx.lineTo(492,492); ctx.moveTo(492,20); ctx.lineTo(20,492); ctx.stroke();
-    } else if(type === 'health') { // NEW: Health Pack Texture
-        ctx.fillStyle = '#eee'; ctx.fillRect(0,0,512,512); // White Box
-        ctx.fillStyle = '#f00'; // Red Cross
-        ctx.fillRect(180, 50, 152, 412); // Vertical
-        ctx.fillRect(50, 180, 412, 152); // Horizontal
+    } else if(type === 'health') { 
+        ctx.fillStyle = '#eee'; ctx.fillRect(0,0,512,512); ctx.fillStyle = '#f00'; 
+        ctx.fillRect(180, 50, 152, 412); ctx.fillRect(50, 180, 412, 152); 
         ctx.strokeStyle = '#ccc'; ctx.strokeRect(0,0,512,512);
     }
     const tex = new THREE.CanvasTexture(canvas); tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; return tex;
@@ -160,7 +160,6 @@ function init() {
     });
     document.addEventListener('mousedown', onShoot);
 
-    // Socket Events
     socket.on('currentPlayers', (serverPlayers) => { for (let id in serverPlayers) if (id !== socket.id) addOtherPlayer(serverPlayers[id]); });
     socket.on('newPlayer', (p) => addOtherPlayer(p));
     socket.on('playerMoved', (p) => { if (players[p.id]) { players[p.id].mesh.position.set(p.x, p.y, p.z); players[p.id].mesh.rotation.y = p.rotation; } });
@@ -180,7 +179,6 @@ function init() {
     socket.on('ammoTaken', (id) => { if(ammoMeshes[id]) ammoMeshes[id].visible = false; });
     socket.on('ammoRespawn', (id) => { if(ammoMeshes[id]) ammoMeshes[id].visible = true; });
 
-    // NEW: Health Events
     socket.on('healthState', (serverHp) => { for(let id in serverHp) { createHealthBox(serverHp[id]); if(!serverHp[id].active) healthMeshes[id].visible = false; } });
     socket.on('healthTaken', (id) => { if(healthMeshes[id]) healthMeshes[id].visible = false; });
     socket.on('healthRespawn', (id) => { if(healthMeshes[id]) healthMeshes[id].visible = true; });
@@ -199,25 +197,70 @@ function createFPSWeapons() {
 }
 function updateWeaponVisibility() { gunModels.forEach((m, i) => m.visible = (i === currentWeaponIdx)); }
 
+// --- MAP & RAMP GENERATION ---
 function createLevel() {
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), MAT_FLOOR);
     MAT_FLOOR.map.repeat.set(20,20); floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; floor.name = "floor"; scene.add(floor);
+    groundObjects.push(floor); // Floor is ground
+
     const boxGeo = new THREE.BoxGeometry(10, 8, 10);
     function addWall(x, z, sx=1, sz=1) {
         const wGeo = (sx===1 && sz===1) ? boxGeo : new THREE.BoxGeometry(10*sx, 8, 10*sz);
         const m = new THREE.Mesh(wGeo, MAT_WALL); m.position.set(x,4,z); m.castShadow = true; m.receiveShadow = true;
         scene.add(m); objects.push(m); m.geometry.computeBoundingBox(); m.BBox = new THREE.Box3().setFromObject(m);
     }
-    // New Map Layout
+    
+    // Central Obstacles
     addWall(15, 15); addWall(-15, -15); addWall(15, -15); addWall(-15, 15);
+    // Outer Walls
     addWall(40, 40); addWall(40, -40); addWall(-40, 40); addWall(-40, -40);
-    addWall(60, 0, 1, 4); addWall(-60, 0, 1, 4); addWall(0, 60, 4, 1); addWall(0, -60, 4, 1);
-    addWall(80, 80); addWall(-80, -80); addWall(80, -80); addWall(-80, 80);
     createBorderWalls();
+
+    // --- 2ND FLOOR (CATWALKS) ---
+    // Ring shape: 4 long platforms
+    createPlatform(0, 55, 140, 10, 12); // North
+    createPlatform(0, -55, 140, 10, 12); // South
+    createPlatform(55, 0, 10, 100, 12); // East (Connecting)
+    createPlatform(-55, 0, 10, 100, 12); // West (Connecting)
+
+    // --- RAMPS (Connect Floor 1 to Floor 2) ---
+    // Ramps must be placed at the gaps.
+    createRamp(0, 30, 0); // North ramp
+    createRamp(0, -30, Math.PI); // South ramp
+    createRamp(30, 0, -Math.PI/2); // East ramp
+    createRamp(-30, 0, Math.PI/2); // West ramp
+}
+
+function createPlatform(x, z, w, d, h) {
+    const geo = new THREE.BoxGeometry(w, 1, d); // Thin floor
+    const m = new THREE.Mesh(geo, MAT_FLOOR);
+    m.position.set(x, h, z);
+    m.receiveShadow = true; m.castShadow = true;
+    scene.add(m);
+    groundObjects.push(m); // Add to Ground collision
+    
+    // Optional: Add collision box for the thickness so you can't walk through the edge
+    m.geometry.computeBoundingBox();
+    m.BBox = new THREE.Box3().setFromObject(m);
+}
+
+function createRamp(x, z, rotY) {
+    // A ramp is a rotated box
+    const len = 25; 
+    const geo = new THREE.BoxGeometry(10, 1, len);
+    const m = new THREE.Mesh(geo, MAT_FLOOR);
+    
+    m.position.set(x, 6, z); // Mid-height (0 to 12 = 6)
+    m.rotation.y = rotY;
+    m.rotation.x = -0.5; // Slope angle approx 25 deg
+    
+    m.receiveShadow = true; m.castShadow = true;
+    scene.add(m);
+    groundObjects.push(m); // Treat as ground
 }
 
 function createBorderWalls() {
-    const thickness = 10; const height = 20; const size = 200; const offset = size/2 + thickness/2; 
+    const thickness = 10; const height = 40; const size = 200; const offset = size/2 + thickness/2; // Taller walls
     const wallGeoH = new THREE.BoxGeometry(size + (thickness*2), height, thickness); 
     const wallGeoV = new THREE.BoxGeometry(thickness, height, size); 
     const positions = [ { x: 0, z: -offset, geo: wallGeoH }, { x: 0, z: offset, geo: wallGeoH }, { x: -offset, z: 0, geo: wallGeoV }, { x: offset, z: 0, geo: wallGeoV } ];
@@ -226,12 +269,133 @@ function createBorderWalls() {
 
 function createAmmoBox(data) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(1.5,1.5,1.5), new THREE.MeshBasicMaterial({color:data.type==='shotgun'?0xffaa00:0x00ffff, wireframe:true}));
-    m.position.set(data.x, 1.5, data.z); m.add(new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshBasicMaterial({color:data.type==='shotgun'?0xffaa00:0x00ffff})));
+    m.position.set(data.x, data.y || 1.5, data.z); 
+    m.add(new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshBasicMaterial({color:data.type==='shotgun'?0xffaa00:0x00ffff})));
     scene.add(m); ammoMeshes[data.id] = m; m.userData = data;
 }
 
-// NEW: Health Pack Creation
 function createHealthBox(data) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(1.5,1.5,1.5), new THREE.MeshBasicMaterial({map: generateTexture('health')}));
-    m.position.set(data.x, 1.5, data.z); 
+    m.position.set(data.x, data.y || 1.5, data.z); 
     scene.add(m); healthMeshes[data.id] = m; m.userData = data;
+}
+
+function createHumanoidMesh(isBot) {
+    const g = new THREE.Group(); const mat = new THREE.MeshLambertMaterial({color:isBot?0xff3333:0x33ff33});
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(0.8,0.8,0.8), mat)).position.y=1.4;
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(1.2,1.5,0.6), mat)).position.y=0.25;
+    const armG = new THREE.BoxGeometry(0.4, 1.5, 0.4); const lArm = new THREE.Mesh(armG, mat); lArm.position.set(-0.9, 0.25, 0); g.add(lArm); const rArm = new THREE.Mesh(armG, mat); rArm.position.set(0.9, 0.25, 0); g.add(rArm);
+    const legG = new THREE.BoxGeometry(0.5, 1.5, 0.5); const lLeg = new THREE.Mesh(legG, mat); lLeg.position.set(-0.35, -1.25, 0); g.add(lLeg); const rLeg = new THREE.Mesh(legG, mat); rLeg.position.set(0.35, -1.25, 0); g.add(rLeg);
+    const hb = new THREE.Mesh(new THREE.BoxGeometry(2,4,2), new THREE.MeshBasicMaterial({visible:false})); hb.position.y=1; g.add(hb);
+    g.traverse(o=>{if(o.isMesh)o.castShadow=true;});
+    return g;
+}
+function addOtherPlayer(p) { const m = createHumanoidMesh(p.isBot); m.position.set(p.x,p.y,p.z); scene.add(m); players[p.id]={mesh:m, info:p}; }
+
+function onShoot() {
+    if (!controls.isLocked) return;
+    const now = performance.now(); const weapon = WEAPONS[currentWeaponIdx];
+    if (now - lastShotTime < weapon.cooldown) return;
+    if (!weapon.infinite && ammoStore[currentWeaponIdx] <= 0) return;
+    lastShotTime = now; if(!weapon.infinite) ammoStore[currentWeaponIdx]--; updateHUD();
+    playSound(weapon.name); socket.emit('shoot', { type: weapon.name });
+    const gun = gunModels[currentWeaponIdx]; gun.position.z+=0.2; setTimeout(()=>gun.position.z-=0.2, 100);
+    const barrelPos = new THREE.Vector3(); if(gun.barrelTip) gun.barrelTip.getWorldPosition(barrelPos); else barrelPos.copy(controls.getObject().position);
+    
+    // Shoot Logic must include walls AND floors now
+    const allMeshes = []; 
+    objects.forEach(o=>allMeshes.push(o)); 
+    groundObjects.forEach(o=>allMeshes.push(o)); // Can shoot floors/ramps
+    for(let id in players) players[id].mesh.traverse(c=>{if(c.isMesh)allMeshes.push(c)}); 
+    
+    const pellets = weapon.count || 1;
+    for(let i=0; i<pellets; i++) {
+        raycaster.setFromCamera(new THREE.Vector2((Math.random()-0.5)*weapon.spread, (Math.random()-0.5)*weapon.spread), camera);
+        const intersects = raycaster.intersectObjects(allMeshes);
+        let end = new THREE.Vector3(); raycaster.ray.at(100, end);
+        if(intersects.length>0) { end.copy(intersects[0].point); const hitId = Object.keys(players).find(k=>{ let f=false; players[k].mesh.traverse(c=>{if(c===intersects[0].object)f=true}); return f; }); if(hitId) socket.emit('playerHit', hitId, weapon.damage); }
+        createBulletTrail(barrelPos, end, weapon.color);
+    }
+}
+function createBulletTrail(s,e,c) { const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints([s,e]), new THREE.LineBasicMaterial({color:c})); scene.add(l); setTimeout(()=>scene.remove(l), 50); }
+function checkCollision(pos) { const b=new THREE.Box3().setFromCenterAndSize(pos, new THREE.Vector3(1,4,1)); for(let o of objects) if(o.BBox && b.intersectsBox(o.BBox)) return true; return false; }
+function updateHUD() { document.getElementById('health-display').innerText = Math.max(0, myHealth); const w = WEAPONS[currentWeaponIdx]; const ac = w.infinite ? "INF" : ammoStore[currentWeaponIdx]; document.getElementById('ammo-display').innerText = `${w.name} [${ac}]`; document.getElementById('ammo-container').style.color = '#' + w.color.toString(16); }
+
+function onKeyDown(e) { 
+    if(e.code === 'Enter') {
+        const input = document.getElementById('chat-input');
+        if(!isChatting) {
+            isChatting = true; document.exitPointerLock();
+            input.style.display = 'block'; input.focus();
+            moveForward=false; moveBackward=false; moveLeft=false; moveRight=false;
+        } else {
+            const msg = input.value.trim();
+            if(msg.length > 0) socket.emit('chatMessage', msg);
+            input.value = ''; input.style.display = 'none'; isChatting = false;
+            if(gameActive) controls.lock();
+        }
+        return; 
+    }
+    if(isChatting) return;
+    if(e.code==='KeyW')moveForward=true; if(e.code==='KeyS')moveBackward=true; if(e.code==='KeyA')moveLeft=true; if(e.code==='KeyD')moveRight=true; if(e.code==='Space'&&canJump)velocity.y+=35; 
+    if(e.code==='Digit1'){currentWeaponIdx=0;updateWeaponVisibility();updateHUD();} if(e.code==='Digit2'){currentWeaponIdx=1;updateWeaponVisibility();updateHUD();} if(e.code==='Digit3'){currentWeaponIdx=2;updateWeaponVisibility();updateHUD();} 
+}
+
+function animate() {
+    requestAnimationFrame(animate); const time = performance.now(); const delta = (time-prevTime)/1000; prevTime=time;
+    // Check Pickups
+    const pPos = controls.getObject().position;
+    for(let k in ammoMeshes) {
+        if(ammoMeshes[k].visible) {
+            ammoMeshes[k].rotation.y+=0.02; 
+            if(pPos.distanceTo(ammoMeshes[k].position)<2.5) {
+                const t=ammoMeshes[k].userData.type; let p=false;
+                if(t==='shotgun'&&ammoStore[1]<WEAPONS[1].maxAmmo){ammoStore[1]=Math.min(ammoStore[1]+6,WEAPONS[1].maxAmmo);p=true;}
+                if(t==='railgun'&&ammoStore[2]<WEAPONS[2].maxAmmo){ammoStore[2]=Math.min(ammoStore[2]+2,WEAPONS[2].maxAmmo);p=true;}
+                if(p){socket.emit('pickupAmmo',k);ammoMeshes[k].visible=false;updateHUD();}
+            }
+        }
+    }
+    for(let k in healthMeshes) {
+        if(healthMeshes[k].visible) {
+            healthMeshes[k].rotation.y+=0.02;
+            if(pPos.distanceTo(healthMeshes[k].position)<2.5 && myHealth < 100) {
+                socket.emit('pickupHealth',k); healthMeshes[k].visible=false; // Server handles hp math
+            }
+        }
+    }
+
+    if (controls.isLocked) {
+        velocity.x -= velocity.x * 10.0 * delta; velocity.z -= velocity.z * 10.0 * delta; 
+        // Gravity Logic applied below after floor check
+        
+        direction.z = Number(moveForward) - Number(moveBackward); direction.x = Number(moveRight) - Number(moveLeft); direction.normalize(); 
+        if (moveForward || moveBackward) velocity.z -= direction.z * 400.0 * delta; if (moveLeft || moveRight) velocity.x -= direction.x * 400.0 * delta;
+        const oldPos = controls.getObject().position.clone();
+        controls.moveRight(-velocity.x * delta); controls.moveForward(-velocity.z * delta);
+        if (checkCollision(controls.getObject().position)) { controls.getObject().position.copy(oldPos); velocity.x=0; velocity.z=0; }
+        
+        // --- NEW GRAVITY / FLOOR LOGIC ---
+        controls.getObject().position.y += (velocity.y * delta); // Apply gravity move first
+        
+        // Raycast Down to find floor
+        groundRaycaster.set(controls.getObject().position, new THREE.Vector3(0, -1, 0));
+        const hits = groundRaycaster.intersectObjects(groundObjects);
+        
+        // "Height" of player eyes is ~2. If ray hits something closer than 2.0, we are on ground.
+        if(hits.length > 0 && hits[0].distance < 2.0 && velocity.y <= 0) {
+            velocity.y = 0;
+            controls.getObject().position.y = hits[0].point.y + 2.0; // Snap to top
+            canJump = true;
+        } else {
+            velocity.y -= 9.8 * 100.0 * delta; // Fall
+        }
+        // Fallback for safety (don't fall through world)
+        if (controls.getObject().position.y < -10) { velocity.y = 0; controls.getObject().position.y = 20; controls.getObject().position.x=0; controls.getObject().position.z=0; }
+
+        socket.emit('playerMovement', { x: controls.getObject().position.x, y: controls.getObject().position.y, z: controls.getObject().position.z, rotation: camera.rotation.y });
+        if(moveForward||moveBackward||moveLeft||moveRight){ weaponGroup.position.x = 0.4 + Math.sin(time*0.01)*0.02; weaponGroup.position.y = -0.3 + Math.abs(Math.sin(time*0.015))*0.02; } else { weaponGroup.position.set(0.4,-0.3,-0.6); }
+    }
+    renderer.render(scene, camera);
+}
+window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
