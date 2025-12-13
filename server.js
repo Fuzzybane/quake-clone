@@ -4,7 +4,13 @@ const http = require('http').createServer(app);
 const io = require('socket.io')(http);
 const path = require('path');
 
+// 1. Force the public folder
 app.use(express.static(path.join(__dirname, 'public')));
+
+// 2. Explicitly serve index.html
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 let players = {};
 let ammoPickups = {}; 
@@ -14,23 +20,39 @@ const MAP_SEED = Math.random();
 let fragLimit = 10; 
 let gameActive = true;
 
+// --- NEW MAP COORDINATES ---
+// The map is 200x200 (-100 to +100)
+// We avoid placing spawns on: +/- 40, +/- 60, +/- 80 (where walls will be)
+
 const SPAWN_POINTS = [
-    { x: 0, z: 0 }, { x: 20, z: 20 }, { x: -20, z: -20 },
-    { x: 20, z: -20 }, { x: -20, z: 20 }, { x: 10, z: 0 },
-    { x: -10, z: 0 }, { x: 0, z: 15 }
+    // Center Safe Spots
+    { x: 0, z: 0 }, 
+    { x: 20, z: 0 }, { x: -20, z: 0 }, { x: 0, z: 20 }, { x: 0, z: -20 },
+    // Outer Corners (Safe starts)
+    { x: 85, z: 85 }, { x: -85, z: -85 }, { x: 85, z: -85 }, { x: -85, z: 85 },
+    // Mid-Field Corridors
+    { x: 50, z: 0 }, { x: -50, z: 0 }, { x: 0, z: 50 }, { x: 0, z: -50 }
 ];
 
 const AMMO_LOCATIONS = [
-    { id: 'ammo_1', x: 0, z: 0, type: 'shotgun' },
-    { id: 'ammo_2', x: 25, z: 25, type: 'railgun' },
-    { id: 'ammo_3', x: -25, z: -25, type: 'railgun' },
-    { id: 'ammo_4', x: 10, z: -10, type: 'shotgun' }
+    // Shotguns (Mid-range access)
+    { id: 'ammo_sg_1', x: 25, z: 25, type: 'shotgun' },
+    { id: 'ammo_sg_2', x: -25, z: -25, type: 'shotgun' },
+    { id: 'ammo_sg_3', x: 25, z: -25, type: 'shotgun' },
+    { id: 'ammo_sg_4', x: -25, z: 25, type: 'shotgun' },
+    
+    // Railguns (Far edges - High risk to get them)
+    { id: 'ammo_rg_1', x: 90, z: 0, type: 'railgun' },
+    { id: 'ammo_rg_2', x: -90, z: 0, type: 'railgun' },
+    { id: 'ammo_rg_3', x: 0, z: 90, type: 'railgun' },
+    { id: 'ammo_rg_4', x: 0, z: -90, type: 'railgun' }
 ];
 
 AMMO_LOCATIONS.forEach(loc => { ammoPickups[loc.id] = { ...loc, active: true }; });
 
 function getSafeSpawn() {
     const pick = SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
+    // Add small random offset to prevent stacking
     return { x: pick.x + (Math.random()-0.5), z: pick.z + (Math.random()-0.5) };
 }
 
@@ -42,7 +64,6 @@ io.on('connection', (socket) => {
         const spawn = getSafeSpawn();
         const nickname = data.nickname || "Unknown";
         
-        // Host sets the rule (First player or anyone joining updates it)
         if(data.fragLimit) fragLimit = parseInt(data.fragLimit);
 
         players[socket.id] = {
@@ -78,14 +99,13 @@ io.on('connection', (socket) => {
         if (!gameActive) return;
 
         const victim = players[victimId];
-        const attacker = players[socket.id]; // socket.id is the shooter
+        const attacker = players[socket.id]; 
 
         if (victim) {
             victim.health -= damage;
             io.emit('healthUpdate', { id: victimId, health: victim.health });
             
             if (victim.health <= 0) {
-                // Respawn Victim
                 const spawn = getSafeSpawn();
                 victim.health = 100;
                 victim.x = spawn.x;
@@ -93,18 +113,15 @@ io.on('connection', (socket) => {
                 victim.y = 5; 
                 io.emit('playerRespawn', victim);
 
-                // Credit Killer
                 if (attacker && attacker.id !== victim.id) {
                     attacker.score++;
                     io.emit('scoreUpdate', { id: attacker.id, score: attacker.score });
                     io.emit('serverMessage', `${attacker.nickname} fragged ${victim.nickname}`);
                     
-                    // CHECK WIN CONDITION
                     if (attacker.score >= fragLimit) {
                         endGame(attacker.nickname);
                     }
                 } else {
-                    // Suicide (fell off world or self damage if we added it)
                     io.emit('serverMessage', `${victim.nickname} died`);
                 }
             }
@@ -138,10 +155,8 @@ function endGame(winnerName) {
     gameActive = false;
     io.emit('gameOver', winnerName);
 
-    // Reset loop
     setTimeout(() => {
         gameActive = true;
-        // Reset scores and positions
         for (let id in players) {
             players[id].score = 0;
             players[id].health = 100;
@@ -151,7 +166,7 @@ function endGame(winnerName) {
             players[id].y = 5;
         }
         io.emit('gameReset', players);
-    }, 6000); // 6 seconds
+    }, 6000); 
 }
 
 const PORT = process.env.PORT || 3000;
