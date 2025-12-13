@@ -1,8 +1,8 @@
 // --- CONFIGURATION ---
 const socket = io();
 let scene, camera, renderer, controls;
-let objects = []; // Walls (Block Horizontal)
-let groundObjects = []; // Floors/Ramps (Block Vertical)
+let objects = []; 
+let groundObjects = []; 
 let ammoMeshes = {}; 
 let healthMeshes = {};
 let players = {}; 
@@ -25,7 +25,7 @@ let velocity = new THREE.Vector3();
 let direction = new THREE.Vector3();
 let prevTime = performance.now();
 const raycaster = new THREE.Raycaster();
-const groundRaycaster = new THREE.Raycaster(); // NEW: For ramps/floors
+const groundRaycaster = new THREE.Raycaster(); 
 
 const WEAPONS = [
     { name: "BLASTER", damage: 15, cooldown: 250, color: 0xffff00, speed: 1, spread: 0, infinite: true },
@@ -132,12 +132,16 @@ document.getElementById('join-btn').addEventListener('click', () => {
 });
 
 function init() {
-    scene = new THREE.Scene(); scene.background = new THREE.Color(0x050505); scene.fog = new THREE.Fog(0x050505, 0, 80);
+    scene = new THREE.Scene(); scene.background = new THREE.Color(0x050505); scene.fog = new THREE.Fog(0x050505, 0, 100);
     camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000); camera.position.y = 2;
     renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true; document.body.appendChild(renderer.domElement);
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6); scene.add(hemi);
-    const dir = new THREE.DirectionalLight(0xffffff, 0.8); dir.position.set(20, 40, 20); dir.castShadow = true; 
+    
+    // LIGHTING FIX
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8); // Brighter
+    scene.add(hemi);
+    const dir = new THREE.DirectionalLight(0xffffff, 1.0); // Stronger sun
+    dir.position.set(20, 60, 20); dir.castShadow = true; 
     dir.shadow.camera.left = -100; dir.shadow.camera.right = 100; dir.shadow.camera.top = 100; dir.shadow.camera.bottom = -100;
     scene.add(dir);
 
@@ -201,7 +205,7 @@ function updateWeaponVisibility() { gunModels.forEach((m, i) => m.visible = (i =
 function createLevel() {
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), MAT_FLOOR);
     MAT_FLOOR.map.repeat.set(20,20); floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; floor.name = "floor"; scene.add(floor);
-    groundObjects.push(floor); // Floor is ground
+    groundObjects.push(floor); 
 
     const boxGeo = new THREE.BoxGeometry(10, 8, 10);
     function addWall(x, z, sx=1, sz=1) {
@@ -210,57 +214,62 @@ function createLevel() {
         scene.add(m); objects.push(m); m.geometry.computeBoundingBox(); m.BBox = new THREE.Box3().setFromObject(m);
     }
     
-    // Central Obstacles
+    // Obstacles (Cleaned up to not block ramps)
     addWall(15, 15); addWall(-15, -15); addWall(15, -15); addWall(-15, 15);
-    // Outer Walls
     addWall(40, 40); addWall(40, -40); addWall(-40, 40); addWall(-40, -40);
+    
+    // Removed the "60" walls that were cutting through the ramps
+    addWall(80, 80); addWall(-80, -80); addWall(80, -80); addWall(-80, 80);
     createBorderWalls();
 
-    // --- 2ND FLOOR (CATWALKS) ---
-    // Ring shape: 4 long platforms
+    // 2ND FLOOR (Catwalks) - Height 12
     createPlatform(0, 55, 140, 10, 12); // North
     createPlatform(0, -55, 140, 10, 12); // South
-    createPlatform(55, 0, 10, 100, 12); // East (Connecting)
-    createPlatform(-55, 0, 10, 100, 12); // West (Connecting)
+    createPlatform(55, 0, 10, 100, 12); // East
+    createPlatform(-55, 0, 10, 100, 12); // West
 
-    // --- RAMPS (Connect Floor 1 to Floor 2) ---
-    // Ramps must be placed at the gaps.
-    createRamp(0, 30, 0); // North ramp
-    createRamp(0, -30, Math.PI); // South ramp
-    createRamp(30, 0, -Math.PI/2); // East ramp
-    createRamp(-30, 0, Math.PI/2); // West ramp
+    // FIXED RAMPS (Midpoint Calculation)
+    // Start (Ground): 20, End (Catwalk): 55. Mid = 37.5
+    // Height: 0 to 12.5. MidY = 6.25.
+    createRamp(0, 37.5, 35, 12.5, 'North'); // Goes +Z
+    createRamp(0, -37.5, 35, 12.5, 'South'); // Goes -Z
+    createRamp(37.5, 0, 35, 12.5, 'East'); // Goes +X
+    createRamp(-37.5, 0, 35, 12.5, 'West'); // Goes -X
 }
 
 function createPlatform(x, z, w, d, h) {
-    const geo = new THREE.BoxGeometry(w, 1, d); // Thin floor
+    const geo = new THREE.BoxGeometry(w, 1, d); 
     const m = new THREE.Mesh(geo, MAT_FLOOR);
-    m.position.set(x, h, z);
-    m.receiveShadow = true; m.castShadow = true;
-    scene.add(m);
-    groundObjects.push(m); // Add to Ground collision
-    
-    // Optional: Add collision box for the thickness so you can't walk through the edge
-    m.geometry.computeBoundingBox();
-    m.BBox = new THREE.Box3().setFromObject(m);
+    m.position.set(x, h, z); m.receiveShadow = true; m.castShadow = true;
+    scene.add(m); groundObjects.push(m); 
+    m.geometry.computeBoundingBox(); m.BBox = new THREE.Box3().setFromObject(m);
 }
 
-function createRamp(x, z, rotY) {
-    // A ramp is a rotated box
-    const len = 25; 
-    const geo = new THREE.BoxGeometry(10, 1, len);
+function createRamp(x, z, len, targetHeight, direction) {
+    const angle = Math.asin(targetHeight / len); 
+    const geo = new THREE.BoxGeometry(8, 1, len);
     const m = new THREE.Mesh(geo, MAT_FLOOR);
     
-    m.position.set(x, 6, z); // Mid-height (0 to 12 = 6)
-    m.rotation.y = rotY;
-    m.rotation.x = -0.5; // Slope angle approx 25 deg
+    m.position.set(x, targetHeight/2, z); // Center of ramp
     
+    if (direction === 'North') {
+        m.rotation.x = -angle; // Tilt up towards +Z
+    } else if (direction === 'South') {
+        m.rotation.x = angle; // Tilt up towards -Z
+    } else if (direction === 'East') {
+        m.geometry = new THREE.BoxGeometry(len, 1, 8); 
+        m.rotation.z = angle; // Tilt up towards +X
+    } else if (direction === 'West') {
+        m.geometry = new THREE.BoxGeometry(len, 1, 8);
+        m.rotation.z = -angle; // Tilt up towards -X
+    }
+
     m.receiveShadow = true; m.castShadow = true;
-    scene.add(m);
-    groundObjects.push(m); // Treat as ground
+    scene.add(m); groundObjects.push(m);
 }
 
 function createBorderWalls() {
-    const thickness = 10; const height = 40; const size = 200; const offset = size/2 + thickness/2; // Taller walls
+    const thickness = 10; const height = 40; const size = 200; const offset = size/2 + thickness/2; 
     const wallGeoH = new THREE.BoxGeometry(size + (thickness*2), height, thickness); 
     const wallGeoV = new THREE.BoxGeometry(thickness, height, size); 
     const positions = [ { x: 0, z: -offset, geo: wallGeoH }, { x: 0, z: offset, geo: wallGeoH }, { x: -offset, z: 0, geo: wallGeoV }, { x: offset, z: 0, geo: wallGeoV } ];
@@ -302,12 +311,8 @@ function onShoot() {
     const gun = gunModels[currentWeaponIdx]; gun.position.z+=0.2; setTimeout(()=>gun.position.z-=0.2, 100);
     const barrelPos = new THREE.Vector3(); if(gun.barrelTip) gun.barrelTip.getWorldPosition(barrelPos); else barrelPos.copy(controls.getObject().position);
     
-    // Shoot Logic must include walls AND floors now
-    const allMeshes = []; 
-    objects.forEach(o=>allMeshes.push(o)); 
-    groundObjects.forEach(o=>allMeshes.push(o)); // Can shoot floors/ramps
+    const allMeshes = []; objects.forEach(o=>allMeshes.push(o)); groundObjects.forEach(o=>allMeshes.push(o));
     for(let id in players) players[id].mesh.traverse(c=>{if(c.isMesh)allMeshes.push(c)}); 
-    
     const pellets = weapon.count || 1;
     for(let i=0; i<pellets; i++) {
         raycaster.setFromCamera(new THREE.Vector2((Math.random()-0.5)*weapon.spread, (Math.random()-0.5)*weapon.spread), camera);
@@ -343,7 +348,6 @@ function onKeyDown(e) {
 
 function animate() {
     requestAnimationFrame(animate); const time = performance.now(); const delta = (time-prevTime)/1000; prevTime=time;
-    // Check Pickups
     const pPos = controls.getObject().position;
     for(let k in ammoMeshes) {
         if(ammoMeshes[k].visible) {
@@ -360,37 +364,24 @@ function animate() {
         if(healthMeshes[k].visible) {
             healthMeshes[k].rotation.y+=0.02;
             if(pPos.distanceTo(healthMeshes[k].position)<2.5 && myHealth < 100) {
-                socket.emit('pickupHealth',k); healthMeshes[k].visible=false; // Server handles hp math
+                socket.emit('pickupHealth',k); healthMeshes[k].visible=false;
             }
         }
     }
 
     if (controls.isLocked) {
         velocity.x -= velocity.x * 10.0 * delta; velocity.z -= velocity.z * 10.0 * delta; 
-        // Gravity Logic applied below after floor check
-        
         direction.z = Number(moveForward) - Number(moveBackward); direction.x = Number(moveRight) - Number(moveLeft); direction.normalize(); 
         if (moveForward || moveBackward) velocity.z -= direction.z * 400.0 * delta; if (moveLeft || moveRight) velocity.x -= direction.x * 400.0 * delta;
         const oldPos = controls.getObject().position.clone();
         controls.moveRight(-velocity.x * delta); controls.moveForward(-velocity.z * delta);
         if (checkCollision(controls.getObject().position)) { controls.getObject().position.copy(oldPos); velocity.x=0; velocity.z=0; }
         
-        // --- NEW GRAVITY / FLOOR LOGIC ---
-        controls.getObject().position.y += (velocity.y * delta); // Apply gravity move first
-        
-        // Raycast Down to find floor
+        controls.getObject().position.y += (velocity.y * delta);
         groundRaycaster.set(controls.getObject().position, new THREE.Vector3(0, -1, 0));
         const hits = groundRaycaster.intersectObjects(groundObjects);
-        
-        // "Height" of player eyes is ~2. If ray hits something closer than 2.0, we are on ground.
-        if(hits.length > 0 && hits[0].distance < 2.0 && velocity.y <= 0) {
-            velocity.y = 0;
-            controls.getObject().position.y = hits[0].point.y + 2.0; // Snap to top
-            canJump = true;
-        } else {
-            velocity.y -= 9.8 * 100.0 * delta; // Fall
-        }
-        // Fallback for safety (don't fall through world)
+        if(hits.length > 0 && hits[0].distance < 2.0 && velocity.y <= 0) { velocity.y = 0; controls.getObject().position.y = hits[0].point.y + 2.0; canJump = true; } 
+        else { velocity.y -= 9.8 * 100.0 * delta; }
         if (controls.getObject().position.y < -10) { velocity.y = 0; controls.getObject().position.y = 20; controls.getObject().position.x=0; controls.getObject().position.z=0; }
 
         socket.emit('playerMovement', { x: controls.getObject().position.x, y: controls.getObject().position.y, z: controls.getObject().position.z, rotation: camera.rotation.y });
