@@ -131,6 +131,11 @@ document.getElementById('join-btn').addEventListener('click', () => {
     socket.emit('joinGame', { nickname: nickname, fragLimit: fragLimit });
 });
 
+// NEW: Add Bot Button Handler
+document.getElementById('add-bot-btn').addEventListener('click', () => {
+    socket.emit('addBot');
+});
+
 function init() {
     scene = new THREE.Scene(); scene.background = new THREE.Color(0x050505); scene.fog = new THREE.Fog(0x050505, 0, 100);
     camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000); camera.position.y = 2;
@@ -188,7 +193,6 @@ function init() {
     socket.on('healthRespawn', (id) => { if(healthMeshes[id]) healthMeshes[id].visible = true; });
 }
 
-// --- RESTORED DETAILED WEAPON MODELS ---
 function createFPSWeapons() {
     weaponGroup = new THREE.Group();
     weaponGroup.position.set(0.4, -0.3, -0.6); 
@@ -259,23 +263,16 @@ function createLevel() {
         scene.add(m); objects.push(m); m.geometry.computeBoundingBox(); m.BBox = new THREE.Box3().setFromObject(m);
     }
     
-    // RESTORED L-WALLS
-    // Center Pillars
+    // RESTORED L-WALLS & PILLARS
     addWall(15, 15); addWall(-15, -15); addWall(15, -15); addWall(-15, 15);
     
     // L-Shapes at +/- 40
-    // North East
     addWall(40, 40); addWall(40, 32); 
-    // South East
     addWall(40, -40); addWall(40, -32);
-    // North West
     addWall(-40, 40); addWall(-40, 32);
-    // South West
     addWall(-40, -40); addWall(-40, -32);
 
-    // Far Outer Pillars
     addWall(80, 80); addWall(-80, -80); addWall(80, -80); addWall(-80, 80);
-    
     createBorderWalls();
 
     // 2ND FLOOR (Catwalks) - Height 12
@@ -285,8 +282,6 @@ function createLevel() {
     createPlatform(-55, 0, 10, 100, 12); // West
 
     // RAMPS (Height 0 to 12.5)
-    // Target height is 12.5 (12 + 0.5 thickness). Ramp length 35.
-    // Start at roughly +/- 20, end at +/- 55. Mid = 37.5
     createRamp(0, 37.5, 35, 12.5, 'North'); // Goes +Z
     createRamp(0, -37.5, 35, 12.5, 'South'); // Goes -Z
     createRamp(37.5, 0, 35, 12.5, 'East'); // Goes +X

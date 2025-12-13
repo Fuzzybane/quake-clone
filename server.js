@@ -17,6 +17,7 @@ const MAP_SEED = Math.random();
 // Game Settings
 let fragLimit = 10; 
 let gameActive = true;
+let botCount = 0;
 
 // Map Coordinates
 const SPAWN_POINTS = [
@@ -26,26 +27,21 @@ const SPAWN_POINTS = [
 ];
 
 const AMMO_LOCATIONS = [
-    // Ground Floor Shotguns
     { id: 'ammo_sg_1', x: 25, z: 25, y: 1.5, type: 'shotgun' },
     { id: 'ammo_sg_2', x: -25, z: -25, y: 1.5, type: 'shotgun' },
-    
-    // High Ground Railguns (The 2nd Floor Ring)
-    { id: 'ammo_rg_1', x: 0, z: 55, y: 13.5, type: 'railgun' }, // North Catwalk
-    { id: 'ammo_rg_2', x: 0, z: -55, y: 13.5, type: 'railgun' }, // South Catwalk
-    
-    // Far Edge Railguns
-    { id: 'ammo_rg_3', x: 90, z: 0, y: 1.5, type: 'railgun' },
-    { id: 'ammo_rg_4', x: -90, z: 0, y: 1.5, type: 'railgun' }
+    { id: 'ammo_sg_3', x: 25, z: -25, y: 1.5, type: 'shotgun' },
+    { id: 'ammo_sg_4', x: -25, z: 25, y: 1.5, type: 'shotgun' },
+    { id: 'ammo_rg_1', x: 90, z: 0, y: 1.5, type: 'railgun' },
+    { id: 'ammo_rg_2', x: -90, z: 0, y: 1.5, type: 'railgun' },
+    { id: 'ammo_rg_3', x: 0, z: 90, type: 'railgun' },
+    { id: 'ammo_rg_4', x: 0, z: -90, type: 'railgun' }
 ];
 
 const HEALTH_LOCATIONS = [
-    { id: 'hp_1', x: 0, z: 0, y: 1.5 },      // Dead Center
-    // High Ground Health
-    { id: 'hp_2', x: 55, z: 0, y: 13.5 },    // East Catwalk
-    { id: 'hp_3', x: -55, z: 0, y: 13.5 },   // West Catwalk
-    // Outer Corners
-    { id: 'hp_4', x: 90, z: 90, y: 1.5 },    
+    { id: 'hp_1', x: 0, z: 0, y: 1.5 },
+    { id: 'hp_2', x: 55, z: 0, y: 13.5 },
+    { id: 'hp_3', x: -55, z: 0, y: 13.5 },
+    { id: 'hp_4', x: 90, z: 90, y: 1.5 },
     { id: 'hp_5', x: -90, z: -90, y: 1.5 }
 ];
 
@@ -80,6 +76,24 @@ io.on('connection', (socket) => {
         io.emit('serverMessage', `${nickname} has entered the arena`);
     });
 
+    // NEW: ADD BOT HANDLER
+    socket.on('addBot', () => {
+        const botId = 'bot_' + Math.random().toString(36).substr(2, 9);
+        const spawn = getSafeSpawn();
+        
+        players[botId] = {
+            id: botId,
+            x: spawn.x, y: 5, z: spawn.z, rotation: 0,
+            nickname: `Bot_${++botCount}`,
+            health: 100, isBot: true, score: 0,
+            targetX: 0, targetZ: 0, lastShot: 0
+        };
+
+        io.emit('newPlayer', players[botId]);
+        io.emit('updatePlayerList', Object.keys(players).length);
+        io.emit('serverMessage', `${players[botId].nickname} has been added`);
+    });
+
     socket.on('chatMessage', (msg) => {
         if(players[socket.id]) {
             io.emit('chatMessage', { name: players[socket.id].nickname, text: msg });
@@ -102,28 +116,7 @@ io.on('connection', (socket) => {
 
     socket.on('playerHit', (victimId, damage) => {
         if (!gameActive) return;
-        const victim = players[victimId];
-        const attacker = players[socket.id]; 
-
-        if (victim) {
-            victim.health -= damage;
-            io.emit('healthUpdate', { id: victimId, health: victim.health });
-            
-            if (victim.health <= 0) {
-                const spawn = getSafeSpawn();
-                victim.health = 100; victim.x = spawn.x; victim.z = spawn.z; victim.y = 5; 
-                io.emit('playerRespawn', victim);
-
-                if (attacker && attacker.id !== victim.id) {
-                    attacker.score++;
-                    io.emit('scoreUpdate', { id: attacker.id, score: attacker.score });
-                    io.emit('serverMessage', `${attacker.nickname} fragged ${victim.nickname}`);
-                    if (attacker.score >= fragLimit) endGame(attacker.nickname);
-                } else {
-                    io.emit('serverMessage', `${victim.nickname} died`);
-                }
-            }
-        }
+        handleDamage(victimId, players[socket.id], damage);
     });
 
     socket.on('pickupAmmo', (ammoId) => {
@@ -167,6 +160,30 @@ io.on('connection', (socket) => {
     });
 });
 
+// Centralized Damage Handler (Used by players AND bots)
+function handleDamage(victimId, attacker, damage) {
+    const victim = players[victimId];
+    if (victim) {
+        victim.health -= damage;
+        io.emit('healthUpdate', { id: victimId, health: victim.health });
+        
+        if (victim.health <= 0) {
+            const spawn = getSafeSpawn();
+            victim.health = 100; victim.x = spawn.x; victim.z = spawn.z; victim.y = 5; 
+            io.emit('playerRespawn', victim);
+
+            if (attacker && attacker.id !== victim.id) {
+                attacker.score++;
+                io.emit('scoreUpdate', { id: attacker.id, score: attacker.score });
+                io.emit('serverMessage', `${attacker.nickname} fragged ${victim.nickname}`);
+                if (attacker.score >= fragLimit) endGame(attacker.nickname);
+            } else {
+                io.emit('serverMessage', `${victim.nickname} died`);
+            }
+        }
+    }
+}
+
 function endGame(winnerName) {
     gameActive = false;
     io.emit('gameOver', winnerName);
@@ -180,6 +197,77 @@ function endGame(winnerName) {
         io.emit('gameReset', players);
     }, 6000); 
 }
+
+// --- BOT AI LOOP ---
+setInterval(() => {
+    if (!gameActive) return;
+
+    for (const botId in players) {
+        if (players[botId].isBot) {
+            const bot = players[botId];
+            
+            // 1. Find Closest Target
+            let target = null;
+            let minDist = 1000;
+
+            for (const pid in players) {
+                if (pid !== botId && players[pid].health > 0) {
+                    const p = players[pid];
+                    const d = Math.sqrt(Math.pow(p.x - bot.x, 2) + Math.pow(p.z - bot.z, 2));
+                    if (d < minDist) {
+                        minDist = d;
+                        target = p;
+                    }
+                }
+            }
+
+            // 2. Move
+            if (target && minDist < 60) {
+                // Move towards player
+                const dx = target.x - bot.x;
+                const dz = target.z - bot.z;
+                const angle = Math.atan2(dx, dz);
+                
+                bot.x += Math.sin(angle) * 0.15; // Speed
+                bot.z += Math.cos(angle) * 0.15;
+                bot.rotation = angle; // Face player
+            } else {
+                // Wander
+                const dx = bot.targetX - bot.x;
+                const dz = bot.targetZ - bot.z;
+                const dist = Math.sqrt(dx*dx + dz*dz);
+                if (dist < 2) {
+                    bot.targetX = (Math.random() * 100) - 50;
+                    bot.targetZ = (Math.random() * 100) - 50;
+                }
+                bot.x += (dx/dist) * 0.1;
+                bot.z += (dz/dist) * 0.1;
+                bot.rotation = Math.atan2(dx, dz);
+            }
+
+            // 3. Gravity
+            if(Math.random() < 0.005 && bot.y < 3) bot.y += 3; // Random Jump
+            if(bot.y > 2) bot.y -= 0.1;
+
+            // 4. Shoot
+            if (target && minDist < 40) {
+                const now = Date.now();
+                if (now - (bot.lastShot || 0) > 1000) { // Fire every 1 sec
+                    bot.lastShot = now;
+                    // Visuals
+                    io.emit('playerShot', { id: bot.id, weapon: {type: 'BLASTER'} });
+                    
+                    // Accuracy Check (30% chance to hit)
+                    if (Math.random() < 0.3) {
+                        handleDamage(target.id, bot, 10);
+                    }
+                }
+            }
+
+            io.emit('playerMoved', bot);
+        }
+    }
+}, 1000 / 30); 
 
 const PORT = process.env.PORT || 3000;
 http.listen(PORT, () => { console.log(`Server running on port ${PORT}`); });
