@@ -19,13 +19,10 @@ let fragLimit = 10;
 let gameActive = true;
 let botCount = 0;
 
-// --- MAP COLLISION DATA (Matches Client Game.js) ---
+// --- MAP COLLISION DATA ---
 const MAP_OBSTACLES = [
-    // Center Pillars
     { x: 15, z: 15 }, { x: -15, z: -15 }, { x: 15, z: -15 }, { x: -15, z: 15 },
-    // L-Walls
     { x: 40, z: 40 }, { x: 40, z: -40 }, { x: -40, z: 40 }, { x: -40, z: -40 },
-    // Outer Pillars
     { x: 80, z: 80 }, { x: -80, z: -80 }, { x: 80, z: -80 }, { x: -80, z: 80 }
 ];
 
@@ -70,10 +67,24 @@ io.on('connection', (socket) => {
         const spawn = getSafeSpawn();
         const nickname = data.nickname || "Unknown";
         
-        // --- FIX: Only First Player Sets Rules ---
+        // Host Rule Setting
         if (Object.keys(players).length === 0) {
             if(data.fragLimit) fragLimit = parseInt(data.fragLimit);
         }
+
+        // --- NEW: REPLACEMENT LOGIC ---
+        // Look for any bot in the current player list
+        const botId = Object.keys(players).find(id => players[id].isBot);
+        
+        if (botId) {
+            // If we found a bot, delete it to make room for the human
+            console.log(`Replacing ${players[botId].nickname} with human ${nickname}`);
+            delete players[botId];
+            io.emit('playerDisconnected', botId);
+            // We don't announce "disconnected" for the bot to the chat to keep it seamless, 
+            // or we could say: io.emit('serverMessage', `${players[botId].nickname} replaced by ${nickname}`);
+        }
+        // ------------------------------
 
         players[socket.id] = {
             id: socket.id, x: spawn.x, y: 5, z: spawn.z, rotation: 0,
@@ -201,7 +212,6 @@ function endGame(winnerName) {
     }, 6000); 
 }
 
-// Bot Collision Logic
 function checkBotWallCollision(x, z) {
     if (x > 95 || x < -95 || z > 95 || z < -95) return true;
     for(let obs of MAP_OBSTACLES) {
@@ -210,7 +220,6 @@ function checkBotWallCollision(x, z) {
     return false;
 }
 
-// --- BOT AI LOOP ---
 const BOT_WEAPONS = ['BLASTER', 'SHOTGUN', 'RAILGUN'];
 
 setInterval(() => {
