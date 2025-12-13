@@ -12,7 +12,7 @@
         <h1>WEB QUAKE ARENA</h1>
         <input type="text" id="nickname" placeholder="Enter Nickname" maxlength="12">
         
-        <!-- NEW: Frag Limit Input -->
+        <!-- Frag Limit Input -->
         <div style="margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
             <label style="color: #0f0; font-size: 20px;">FRAG LIMIT:</label>
             <input type="number" id="frag-limit" value="10" min="1" max="50" style="width: 60px; margin: 0;">
@@ -26,17 +26,25 @@
             <p>Players Online: <span id="player-count">0</span>/16</p>
             <p>Mode: Free For All</p>
         </div>
-        <p style="margin-top:20px; font-size: 12px; color: #666;">Controls: WASD to Move, SPACE to Jump, CLICK to Shoot, 1-3 Change Weapons</p>
+        <p style="margin-top:20px; font-size: 12px; color: #666;">Controls: WASD to Move, SPACE to Jump, CLICK to Shoot, 1-3 Change Weapons, ENTER to Chat</p>
     </div>
 
-    <!-- NEW: Game Over Screen -->
+    <!-- Game Over Screen -->
     <div id="game-over-overlay">
         <div id="winner-text">PLAYER WINS!</div>
         <div id="restart-timer">Returning to lobby in 6...</div>
     </div>
 
+    <!-- Server Messages (Join/Leave) -->
     <div id="messages-container"></div>
 
+    <!-- Chat System -->
+    <div id="chat-ui">
+        <div id="chat-history"></div>
+        <input type="text" id="chat-input" placeholder="Press Enter to send..." maxlength="60">
+    </div>
+
+    <!-- HUD -->
     <div id="hud">
         <div id="health-container" class="hud-item">
             ✚ <span id="health-display">100</span>
