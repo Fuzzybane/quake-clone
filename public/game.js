@@ -188,18 +188,63 @@ function init() {
     socket.on('healthRespawn', (id) => { if(healthMeshes[id]) healthMeshes[id].visible = true; });
 }
 
+// --- RESTORED DETAILED WEAPON MODELS ---
 function createFPSWeapons() {
-    weaponGroup = new THREE.Group(); weaponGroup.position.set(0.4, -0.3, -0.6); camera.add(weaponGroup); 
-    const blaster = new THREE.Group(); blaster.add(new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 0.4), new THREE.MeshStandardMaterial({ color: 0xffff00 })));
-    const bTip = new THREE.Object3D(); bTip.position.set(0, 0, -0.25); blaster.add(bTip); blaster.barrelTip = bTip;
-    const shotgun = new THREE.Group(); shotgun.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.5), new THREE.MeshStandardMaterial({ color: 0x8B4513 })));
-    const sTip = new THREE.Object3D(); sTip.position.set(0, 0.05, -0.85); shotgun.add(sTip); shotgun.barrelTip = sTip;
-    const railgun = new THREE.Group(); railgun.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 0.6), new THREE.MeshStandardMaterial({ color: 0x222222 })));
-    const rTip = new THREE.Object3D(); rTip.position.set(0, 0, -1.0); railgun.add(rTip); railgun.barrelTip = rTip;
-    weaponGroup.add(blaster); weaponGroup.add(shotgun); weaponGroup.add(railgun);
-    gunModels = [blaster, shotgun, railgun]; updateWeaponVisibility();
+    weaponGroup = new THREE.Group();
+    weaponGroup.position.set(0.4, -0.3, -0.6); 
+    camera.add(weaponGroup); 
+
+    // 1. BLASTER
+    const blaster = new THREE.Group();
+    const bMain = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 0.4), new THREE.MeshStandardMaterial({ color: 0xffff00 }));
+    const bHandle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.2, 0.1), new THREE.MeshStandardMaterial({ color: 0x444444 }));
+    bHandle.position.set(0, -0.15, 0.1);
+    blaster.add(bMain); blaster.add(bHandle);
+    
+    const bTip = new THREE.Object3D(); 
+    bTip.position.set(0, 0, -0.25); 
+    blaster.add(bTip); 
+    blaster.barrelTip = bTip;
+    
+    // 2. SHOTGUN
+    const shotgun = new THREE.Group();
+    const sStock = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.5), new THREE.MeshStandardMaterial({ color: 0x8B4513 }));
+    const sBarrelL = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.8), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+    sBarrelL.rotation.x = -Math.PI/2; sBarrelL.position.set(-0.07, 0.05, -0.4);
+    const sBarrelR = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.8), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+    sBarrelR.rotation.x = -Math.PI/2; sBarrelR.position.set(0.07, 0.05, -0.4);
+    shotgun.add(sStock); shotgun.add(sBarrelL); shotgun.add(sBarrelR);
+    
+    const sTip = new THREE.Object3D(); 
+    sTip.position.set(0, 0.05, -0.85); 
+    shotgun.add(sTip); 
+    shotgun.barrelTip = sTip;
+
+    // 3. RAILGUN
+    const railgun = new THREE.Group();
+    const rBody = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 0.6), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+    const rRailT = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1.2), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff }));
+    rRailT.position.set(0, 0.18, -0.4);
+    const rRailB = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1.2), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff }));
+    rRailB.position.set(0, -0.18, -0.4);
+    railgun.add(rBody); railgun.add(rRailT); railgun.add(rRailB);
+    
+    const rTip = new THREE.Object3D(); 
+    rTip.position.set(0, 0, -1.0); 
+    railgun.add(rTip); 
+    railgun.barrelTip = rTip;
+
+    weaponGroup.add(blaster); 
+    weaponGroup.add(shotgun); 
+    weaponGroup.add(railgun);
+    
+    gunModels = [blaster, shotgun, railgun];
+    updateWeaponVisibility();
 }
-function updateWeaponVisibility() { gunModels.forEach((m, i) => m.visible = (i === currentWeaponIdx)); }
+
+function updateWeaponVisibility() { 
+    gunModels.forEach((m, i) => m.visible = (i === currentWeaponIdx)); 
+}
 
 // --- MAP & RAMP GENERATION ---
 function createLevel() {
@@ -214,12 +259,23 @@ function createLevel() {
         scene.add(m); objects.push(m); m.geometry.computeBoundingBox(); m.BBox = new THREE.Box3().setFromObject(m);
     }
     
-    // Obstacles (Cleaned up to not block ramps)
+    // RESTORED L-WALLS
+    // Center Pillars
     addWall(15, 15); addWall(-15, -15); addWall(15, -15); addWall(-15, 15);
-    addWall(40, 40); addWall(40, -40); addWall(-40, 40); addWall(-40, -40);
     
-    // Removed the "60" walls that were cutting through the ramps
+    // L-Shapes at +/- 40
+    // North East
+    addWall(40, 40); addWall(40, 32); 
+    // South East
+    addWall(40, -40); addWall(40, -32);
+    // North West
+    addWall(-40, 40); addWall(-40, 32);
+    // South West
+    addWall(-40, -40); addWall(-40, -32);
+
+    // Far Outer Pillars
     addWall(80, 80); addWall(-80, -80); addWall(80, -80); addWall(-80, 80);
+    
     createBorderWalls();
 
     // 2ND FLOOR (Catwalks) - Height 12
@@ -228,9 +284,9 @@ function createLevel() {
     createPlatform(55, 0, 10, 100, 12); // East
     createPlatform(-55, 0, 10, 100, 12); // West
 
-    // FIXED RAMPS (Midpoint Calculation)
-    // Start (Ground): 20, End (Catwalk): 55. Mid = 37.5
-    // Height: 0 to 12.5. MidY = 6.25.
+    // RAMPS (Height 0 to 12.5)
+    // Target height is 12.5 (12 + 0.5 thickness). Ramp length 35.
+    // Start at roughly +/- 20, end at +/- 55. Mid = 37.5
     createRamp(0, 37.5, 35, 12.5, 'North'); // Goes +Z
     createRamp(0, -37.5, 35, 12.5, 'South'); // Goes -Z
     createRamp(37.5, 0, 35, 12.5, 'East'); // Goes +X
@@ -250,18 +306,18 @@ function createRamp(x, z, len, targetHeight, direction) {
     const geo = new THREE.BoxGeometry(8, 1, len);
     const m = new THREE.Mesh(geo, MAT_FLOOR);
     
-    m.position.set(x, targetHeight/2, z); // Center of ramp
+    m.position.set(x, targetHeight/2, z); 
     
     if (direction === 'North') {
-        m.rotation.x = -angle; // Tilt up towards +Z
+        m.rotation.x = -angle; 
     } else if (direction === 'South') {
-        m.rotation.x = angle; // Tilt up towards -Z
+        m.rotation.x = angle; 
     } else if (direction === 'East') {
         m.geometry = new THREE.BoxGeometry(len, 1, 8); 
-        m.rotation.z = angle; // Tilt up towards +X
+        m.rotation.z = angle; 
     } else if (direction === 'West') {
         m.geometry = new THREE.BoxGeometry(len, 1, 8);
-        m.rotation.z = -angle; // Tilt up towards -X
+        m.rotation.z = -angle; 
     }
 
     m.receiveShadow = true; m.castShadow = true;
