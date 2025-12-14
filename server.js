@@ -39,30 +39,34 @@ function generateMap() {
     ammoPickups = {};
     healthPickups = {};
     
-    // 1. CATWALK RING
+    // 1. CATWALK RING (Height 12)
+    // North (Split for Ramp Gap)
     currentMap.platforms.push({ x: -50, z: 70, w: 80, d: 20 });
     currentMap.platforms.push({ x: 50, z: 70, w: 80, d: 20 });
-    currentMap.platforms.push({ x: 0, z: 70, w: 20, d: 20 }); 
+    currentMap.platforms.push({ x: 0, z: 70, w: 20, d: 20 }); // Landing Pad
 
+    // South
     currentMap.platforms.push({ x: -50, z: -70, w: 80, d: 20 });
     currentMap.platforms.push({ x: 50, z: -70, w: 80, d: 20 });
     currentMap.platforms.push({ x: 0, z: -70, w: 20, d: 20 }); 
 
+    // East
     currentMap.platforms.push({ x: 70, z: -50, w: 20, d: 80 }); 
     currentMap.platforms.push({ x: 70, z: 50, w: 20, d: 80 });
     currentMap.platforms.push({ x: 70, z: 0, w: 20, d: 20 }); 
 
+    // West
     currentMap.platforms.push({ x: -70, z: -50, w: 20, d: 80 });
     currentMap.platforms.push({ x: -70, z: 50, w: 20, d: 80 });
     currentMap.platforms.push({ x: -70, z: 0, w: 20, d: 20 }); 
 
-    // 2. RAMPS
+    // 2. RAMPS (Ground to Catwalk Inner Edge)
     currentMap.ramps.push({ x: 0, z: 45, dir: 'North' });
     currentMap.ramps.push({ x: 0, z: -45, dir: 'South' });
     currentMap.ramps.push({ x: 45, z: 0, dir: 'East' });
     currentMap.ramps.push({ x: -45, z: 0, dir: 'West' });
 
-    // 3. PILLARS
+    // 3. GROUND PILLARS
     currentMap.walls.push({ x: 35, z: 35, w: 10, d: 10 });
     currentMap.walls.push({ x: -35, z: 35, w: 10, d: 10 });
     currentMap.walls.push({ x: 35, z: -35, w: 10, d: 10 });
@@ -103,17 +107,15 @@ function isPosSafe(x, z) {
         const halfD = (w.d/2) + 4;
         if (x > w.x - halfW && x < w.x + halfW && z > w.z - halfD && z < w.z + halfD) return false;
     }
-    
-    // FIX: Removed Platform and Ramp checks.
-    // We spawn at Y=20, so spawning "above" a platform or ramp is valid and safe.
-    
+    // Note: Platforms/Ramps are ignored for isPosSafe to allow spawning on top of them
     return true;
 }
 
-// --- SPAWN LOGIC ---
+// --- SPAWN LOGIC: CHECK FOR OCCUPIED SPACE ---
 function getSafeSpawn() {
     if (!currentMap.spawns || currentMap.spawns.length === 0) return { x: 0, z: 0 };
     
+    // 1. Generate Candidates
     let candidates = [];
     currentMap.spawns.forEach(sp => {
         candidates.push({ x: sp.x, z: sp.z });
@@ -123,7 +125,7 @@ function getSafeSpawn() {
         candidates.push({ x: sp.x - 8, z: sp.z + 8 });
     });
 
-    // Shuffle
+    // 2. Shuffle
     for (let i = candidates.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
@@ -133,8 +135,10 @@ function getSafeSpawn() {
     let maxMinDist = -1;
 
     for (let cand of candidates) {
+        // A. Geometry Check
         if (!isPosSafe(cand.x, cand.z)) continue;
 
+        // B. Player Distance Check
         let minDist = Infinity;
         let valid = true;
 
@@ -143,6 +147,7 @@ function getSafeSpawn() {
             if (!p.isDead) {
                 const d = Math.sqrt(Math.pow(cand.x - p.x, 2) + Math.pow(cand.z - p.z, 2));
                 if (d < minDist) minDist = d;
+                // CRITICAL: If closer than 8 units, reject immediately
                 if (d < 8) { valid = false; break; }
             }
         }
@@ -163,8 +168,16 @@ function getSafeSpawn() {
     return { x: fallback.x + (Math.random()-0.5)*5, z: fallback.z + (Math.random()-0.5)*5 };
 }
 
+// Bot Movement Check (Different from Spawn Check)
 function checkBotWallCollision(x, z) {
-    return !isPosSafe(x, z);
+    // Re-implement basic bounds/wall check for movement (requires stricter bounds than spawning)
+    if (x > 95 || x < -95 || z > 95 || z < -95) return true;
+    for (let w of currentMap.walls) {
+        const halfW = (w.w/2) + 6; 
+        const halfD = (w.d/2) + 6;
+        if (x > w.x - halfW && x < w.x + halfW && z > w.z - halfD && z < w.z + halfD) return true;
+    }
+    return false;
 }
 
 function getBotHeight(x, z, currentY) {
@@ -227,9 +240,7 @@ io.on('connection', (socket) => {
         socket.broadcast.emit('newPlayer', players[socket.id]);
         io.emit('updatePlayerList', Object.keys(players).length);
         io.emit('serverMessage', `${nickname} has entered the arena`);
-        
-        // Force client position
-        socket.emit('playerRespawn', players[socket.id]);
+        socket.emit('playerRespawn', players[socket.id]); // Force Pos
     });
 
     socket.on('addBot', () => {
@@ -346,6 +357,7 @@ function handleDamage(victimId, attacker, damage) {
             }
             io.emit('playerDied', victim.id);
             setTimeout(() => {
+                if(!gameActive) return;
                 if(players[victim.id]) { 
                     const spawn = getSafeSpawn();
                     victim.health = 100;

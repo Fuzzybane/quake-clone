@@ -142,16 +142,13 @@ socket.on('gameReset', (allPlayersData) => {
 // Entity Updates
 socket.on('currentPlayers', (serverPlayers) => { for (let id in serverPlayers) if (id !== socket.id) addOtherPlayer(serverPlayers[id]); });
 socket.on('newPlayer', (p) => addOtherPlayer(p));
-
 socket.on('playerMoved', (p) => { 
     if (players[p.id]) { 
         players[p.id].mesh.position.set(p.x, p.y, p.z); 
         players[p.id].mesh.rotation.y = p.rotation; 
-        // ANIMATION FIX: Track time of last packet
         players[p.id].lastMoveTime = Date.now();
     } 
 });
-
 socket.on('playerDisconnected', (id) => { if (players[id]) { scene.remove(players[id].mesh); delete players[id]; } });
 socket.on('playerShot', (data) => {
     if(players[data.id]) {
@@ -262,7 +259,7 @@ function init() {
     dir.shadow.camera.left = -100; dir.shadow.camera.right = 100; dir.shadow.camera.top = 100; dir.shadow.camera.bottom = -100;
     scene.add(dir);
 
-    // Initial Safe Floor
+    // Initial Safe Floor (Prevents void falling before map load)
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), MAT_FLOOR);
     MAT_FLOOR.map.repeat.set(22,22); floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; floor.name = "floor"; 
     scene.add(floor);
@@ -287,64 +284,17 @@ function init() {
     document.addEventListener('mousedown', onShoot);
 }
 
-// --- DETAILED WEAPON MODELS (RESTORED) ---
 function createFPSWeapons() {
-    weaponGroup = new THREE.Group();
-    weaponGroup.position.set(0.4, -0.3, -0.6);
-    camera.add(weaponGroup);
-
-    // 1. BLASTER (Pistol)
-    const blaster = new THREE.Group();
-    const bMain = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 0.4), new THREE.MeshStandardMaterial({ color: 0xffff00 }));
-    const bHandle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.2, 0.1), new THREE.MeshStandardMaterial({ color: 0x444444 }));
-    bHandle.position.set(0, -0.15, 0.1);
-    blaster.add(bMain);
-    blaster.add(bHandle);
-    const bTip = new THREE.Object3D();
-    bTip.position.set(0, 0, -0.25);
-    blaster.add(bTip);
-    blaster.barrelTip = bTip;
-
-    // 2. SHOTGUN (Double Barrel)
-    const shotgun = new THREE.Group();
-    const sStock = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.5), new THREE.MeshStandardMaterial({ color: 0x8B4513 }));
-    const sBarrelL = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.8), new THREE.MeshStandardMaterial({ color: 0x222222 }));
-    sBarrelL.rotation.x = -Math.PI / 2;
-    sBarrelL.position.set(-0.07, 0.05, -0.4);
-    const sBarrelR = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.8), new THREE.MeshStandardMaterial({ color: 0x222222 }));
-    sBarrelR.rotation.x = -Math.PI / 2;
-    sBarrelR.position.set(0.07, 0.05, -0.4);
-    shotgun.add(sStock);
-    shotgun.add(sBarrelL);
-    shotgun.add(sBarrelR);
-    const sTip = new THREE.Object3D();
-    sTip.position.set(0, 0.05, -0.85);
-    shotgun.add(sTip);
-    shotgun.barrelTip = sTip;
-
-    // 3. RAILGUN (Sci-Fi)
-    const railgun = new THREE.Group();
-    const rBody = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 0.6), new THREE.MeshStandardMaterial({ color: 0x111111 }));
-    const rRailT = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1.2), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff }));
-    rRailT.position.set(0, 0.18, -0.4);
-    const rRailB = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1.2), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff }));
-    rRailB.position.set(0, -0.18, -0.4);
-    railgun.add(rBody);
-    railgun.add(rRailT);
-    railgun.add(rRailB);
-    const rTip = new THREE.Object3D();
-    rTip.position.set(0, 0, -1.0);
-    railgun.add(rTip);
-    railgun.barrelTip = rTip;
-
-    weaponGroup.add(blaster);
-    weaponGroup.add(shotgun);
-    weaponGroup.add(railgun);
-
-    gunModels = [blaster, shotgun, railgun];
-    updateWeaponVisibility();
+    weaponGroup = new THREE.Group(); weaponGroup.position.set(0.4, -0.3, -0.6); camera.add(weaponGroup); 
+    const blaster = new THREE.Group(); blaster.add(new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 0.4), new THREE.MeshStandardMaterial({ color: 0xffff00 })));
+    const bTip = new THREE.Object3D(); bTip.position.set(0, 0, -0.25); blaster.add(bTip); blaster.barrelTip = bTip;
+    const shotgun = new THREE.Group(); shotgun.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.5), new THREE.MeshStandardMaterial({ color: 0x8B4513 })));
+    const sTip = new THREE.Object3D(); sTip.position.set(0, 0.05, -0.85); shotgun.add(sTip); shotgun.barrelTip = sTip;
+    const railgun = new THREE.Group(); railgun.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 0.6), new THREE.MeshStandardMaterial({ color: 0x222222 })));
+    const rTip = new THREE.Object3D(); rTip.position.set(0, 0, -1.0); railgun.add(rTip); railgun.barrelTip = rTip;
+    weaponGroup.add(blaster); weaponGroup.add(shotgun); weaponGroup.add(railgun);
+    gunModels = [blaster, shotgun, railgun]; updateWeaponVisibility();
 }
-
 function updateWeaponVisibility() { gunModels.forEach((m, i) => m.visible = (i === currentWeaponIdx)); }
 
 // --- LEVEL CREATION ---
@@ -432,7 +382,8 @@ function addOtherPlayer(p) {
         mesh: m, 
         info: p, 
         animTime: 0, 
-        lastMoveTime: Date.now() // Init to now prevents instant jitter
+        lastMoveTime: Date.now(),
+        lastPos: new THREE.Vector3(p.x, p.y, p.z) 
     }; 
 }
 
@@ -477,23 +428,27 @@ function animate() {
     const delta = Math.min((time-prevTime)/1000, 0.1); 
     prevTime=time;
     
-    // --- ANIMATION FIX: TIME BASED ---
+    // Animate Players
     for(let id in players) {
         const p = players[id];
-        // Check if server updated position recently (200ms window)
-        if (Date.now() - p.lastMoveTime < 200) {
-            p.animTime += delta * 10;
-            const legL = p.mesh.getObjectByName('legL'); if(legL) legL.rotation.x = Math.sin(p.animTime)*0.8;
-            const legR = p.mesh.getObjectByName('legR'); if(legR) legR.rotation.x = Math.cos(p.animTime)*0.8;
-            const armL = p.mesh.getObjectByName('armL'); if(armL) armL.rotation.x = Math.cos(p.animTime)*0.8;
-            const armR = p.mesh.getObjectByName('armR'); if(armR) armR.rotation.x = Math.sin(p.animTime)*0.8;
-        } else {
-            // Idle Pose
-            p.animTime = 0;
-            const legL = p.mesh.getObjectByName('legL'); if(legL) legL.rotation.x = 0;
-            const legR = p.mesh.getObjectByName('legR'); if(legR) legR.rotation.x = 0;
-            const armL = p.mesh.getObjectByName('armL'); if(armL) armL.rotation.x = 0;
-            const armR = p.mesh.getObjectByName('armR'); if(armR) armR.rotation.x = 0;
+        // Fix: Check if lastPos exists before distanceTo
+        if (p.lastPos && p.mesh) {
+            const dist = p.mesh.position.distanceTo(p.lastPos);
+            const speed = dist / delta;
+            if(speed > 0.5) {
+                p.animTime += delta * 10;
+                const legL = p.mesh.getObjectByName('legL'); if(legL) legL.rotation.x = Math.sin(p.animTime)*0.8;
+                const legR = p.mesh.getObjectByName('legR'); if(legR) legR.rotation.x = Math.cos(p.animTime)*0.8;
+                const armL = p.mesh.getObjectByName('armL'); if(armL) armL.rotation.x = Math.cos(p.animTime)*0.8;
+                const armR = p.mesh.getObjectByName('armR'); if(armR) armR.rotation.x = Math.sin(p.animTime)*0.8;
+            } else {
+                p.animTime = 0;
+                const legL = p.mesh.getObjectByName('legL'); if(legL) legL.rotation.x = 0;
+                const legR = p.mesh.getObjectByName('legR'); if(legR) legR.rotation.x = 0;
+                const armL = p.mesh.getObjectByName('armL'); if(armL) armL.rotation.x = 0;
+                const armR = p.mesh.getObjectByName('armR'); if(armR) armR.rotation.x = 0;
+            }
+            p.lastPos.copy(p.mesh.position);
         }
     }
 
