@@ -68,7 +68,7 @@ function generateMap() {
     currentMap.walls.push({ x: 35, z: -35, w: 10, d: 10 });
     currentMap.walls.push({ x: -35, z: -35, w: 10, d: 10 });
 
-    // 4. SPAWNS
+    // 4. SPAWNS (Center safe spots)
     currentMap.spawns = [
         { x: 0, z: 0 }, 
         { x: 85, z: 85 }, { x: -85, z: -85 }, { x: 85, z: -85 }, { x: -85, z: 85 }, 
@@ -91,21 +91,41 @@ generateMap();
 
 // --- PHYSICS HELPERS ---
 
-function isPosSafe(x, z) {
+// 1. Strict Spawn Check: Must avoid EVERYTHING
+function isSpawnSafe(x, z) {
     if (isNaN(x) || isNaN(z)) return false;
     if (x > 90 || x < -90 || z > 90 || z < -90) return false;
+
+    // Avoid Walls
     for (let w of currentMap.walls) {
         const halfW = (w.w/2) + 4; 
         const halfD = (w.d/2) + 4;
         if (x > w.x - halfW && x < w.x + halfW && z > w.z - halfD && z < w.z + halfD) return false;
     }
+    // Avoid Platforms (Prevent spawning inside catwalks)
     for (let p of currentMap.platforms) {
         const halfW = (p.w/2) + 2;
         const halfD = (p.d/2) + 2;
         if (x > p.x - halfW && x < p.x + halfW && z > p.z - halfD && z < p.z + halfD) return false;
     }
+    // Avoid Ramps (Prevent spawning inside ramp wedges)
     for (let r of currentMap.ramps) {
         if(Math.abs(x - r.x) < 8 && Math.abs(z - r.z) < 18) return false;
+    }
+    return true;
+}
+
+// 2. Loose Movement Check: Ignore Ramps and Platforms (Bots handle height separately)
+function isValidBotMove(x, z) {
+    if (isNaN(x) || isNaN(z)) return false;
+    if (x > 95 || x < -95 || z > 95 || z < -95) return false; // Arena bounds
+
+    // Only collide with Walls (Pillars)
+    for (let w of currentMap.walls) {
+        // Buffer of 6 allows getting close but not clipping center
+        const halfW = (w.w/2) + 6; 
+        const halfD = (w.d/2) + 6;
+        if (x > w.x - halfW && x < w.x + halfW && z > w.z - halfD && z < w.z + halfD) return false;
     }
     return true;
 }
@@ -115,33 +135,41 @@ function getSafeSpawn() {
     let attempts = 0;
     while(attempts < 50) {
         const pick = currentMap.spawns[Math.floor(Math.random() * currentMap.spawns.length)];
-        const tx = pick.x + (Math.random() - 0.5) * 5; 
-        const tz = pick.z + (Math.random() - 0.5) * 5;
-        if (isPosSafe(tx, tz)) return { x: tx, z: tz };
+        // Reduced random spread to 4 to keep them closer to the safe nodes
+        const tx = pick.x + (Math.random() - 0.5) * 4; 
+        const tz = pick.z + (Math.random() - 0.5) * 4;
+        if (isSpawnSafe(tx, tz)) return { x: tx, z: tz };
         attempts++;
     }
     return { x: 0, z: 0 };
 }
 
-// Wrapper for clarity in Bot Loop
-function checkBotWallCollision(x, z) {
-    return !isPosSafe(x, z); // If NOT safe, then Collision is TRUE
-}
-
 function getBotHeight(x, z, currentY) {
     if (isNaN(x) || isNaN(z)) return 2;
+    
+    // 1. Ramps (Override Y if on a ramp coordinate)
     for (let r of currentMap.ramps) {
         let dx = x - r.x;
         let dz = z - r.z;
-        if (r.dir === 'North' && Math.abs(dx) < 4 && dz > -15 && dz < 15) return 2 + ((dz + 15) / 30 * 12);
-        if (r.dir === 'South' && Math.abs(dx) < 4 && dz > -15 && dz < 15) return 2 + ((15 - dz) / 30 * 12);
-        if (r.dir === 'East' && Math.abs(dz) < 4 && dx > -15 && dx < 15) return 2 + ((dx + 15) / 30 * 12);
-        if (r.dir === 'West' && Math.abs(dz) < 4 && dx > -15 && dx < 15) return 2 + ((15 - dx) / 30 * 12);
+        // North/South Ramps
+        if ((r.dir === 'North' || r.dir === 'South') && Math.abs(dx) < 5) {
+            if (r.dir === 'North' && dz > -15 && dz < 15) return 2 + ((dz + 15) / 30 * 12);
+            if (r.dir === 'South' && dz > -15 && dz < 15) return 2 + ((15 - dz) / 30 * 12);
+        }
+        // East/West Ramps
+        if ((r.dir === 'East' || r.dir === 'West') && Math.abs(dz) < 5) {
+            if (r.dir === 'East' && dx > -15 && dx < 15) return 2 + ((dx + 15) / 30 * 12);
+            if (r.dir === 'West' && dx > -15 && dx < 15) return 2 + ((15 - dx) / 30 * 12);
+        }
     }
+
+    // 2. Catwalks
     for (let p of currentMap.platforms) {
         const halfW = p.w / 2;
         const halfD = p.d / 2;
         if (x > p.x - halfW && x < p.x + halfW && z > p.z - halfD && z < p.z + halfD) {
+            // If we are already high (came from ramp), stay high.
+            // If we are low (underneath), stay low.
             if (currentY > 6) return 14; 
             else return 2;
         }
@@ -330,6 +358,7 @@ function endGame(winnerName) {
     }, 6000); 
 }
 
+// --- BOT AI LOOP ---
 const BOT_WEAPONS = ['BLASTER', 'SHOTGUN', 'RAILGUN'];
 setInterval(() => {
     if (!gameActive) return;
@@ -372,18 +401,21 @@ setInterval(() => {
             const nextX = bot.x + Math.sin(angle) * 0.15;
             const nextZ = bot.z + Math.cos(angle) * 0.15;
             
-            // Replaced !isPosSafe with checkBotWallCollision for consistent naming (wrapper is defined below)
-            if(!checkBotWallCollision(nextX, nextZ)) { bot.x = nextX; bot.z = nextZ; }
+            // FIX: Using isValidBotMove (Permissive) instead of isSpawnSafe (Strict)
+            if(isValidBotMove(nextX, nextZ)) { 
+                bot.x = nextX; bot.z = nextZ; 
+            }
             bot.rotation = angle;
         } else {
             const dx = bot.targetX - bot.x; const dz = bot.targetZ - bot.z;
             const dist = Math.sqrt(dx*dx + dz*dz);
-            if (dist < 2 || isNaN(dist) || checkBotWallCollision(bot.x + (dx/dist), bot.z + (dz/dist))) {
+            const moveX = bot.x + (dx/dist) * 0.1;
+            const moveZ = bot.z + (dz/dist) * 0.1;
+
+            if (dist < 2 || isNaN(dist) || !isValidBotMove(moveX, moveZ)) {
                 bot.targetX = (Math.random() * 160) - 80; bot.targetZ = (Math.random() * 160) - 80;
             } else {
-                if(dist > 0) {
-                    bot.x += (dx/dist) * 0.1; bot.z += (dz/dist) * 0.1;
-                }
+                bot.x = moveX; bot.z = moveZ;
                 bot.rotation = Math.atan2(dx, dz);
             }
         }
