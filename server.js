@@ -15,7 +15,7 @@ let healthPickups = {};
 const MAP_SEED = Math.random(); 
 
 // --- CONFIGURATION ---
-const MAX_PLAYERS = 16; // Hard Cap
+const MAX_PLAYERS = 16; 
 let fragLimit = 10; 
 let gameActive = true;
 let botCount = 0;
@@ -27,10 +27,24 @@ const MAP_OBSTACLES = [
     { x: 80, z: 80 }, { x: -80, z: -80 }, { x: 80, z: -80 }, { x: -80, z: 80 }
 ];
 
+// --- FIXED SAFE SPAWN POINTS ---
+// Verified to be far away from the obstacle coordinates above
 const SPAWN_POINTS = [
-    { x: 0, z: 0 }, { x: 20, z: 0 }, { x: -20, z: 0 }, { x: 0, z: 20 }, { x: 0, z: -20 },
-    { x: 85, z: 85 }, { x: -85, z: -85 }, { x: 85, z: -85 }, { x: -85, z: 85 },
-    { x: 50, z: 0 }, { x: -50, z: 0 }, { x: 0, z: 50 }, { x: 0, z: -50 }
+    { x: 0, z: 0 },       // Dead Center (Safe)
+    { x: 0, z: 30 },      // Between Center(15) and L-Wall(40)
+    { x: 0, z: -30 }, 
+    { x: 30, z: 0 }, 
+    { x: -30, z: 0 },
+    
+    { x: 60, z: 60 },     // Open area between L-Wall(40) and Outer Pillar(80)
+    { x: -60, z: -60 },
+    { x: 60, z: -60 },
+    { x: -60, z: 60 },
+
+    { x: 92, z: 0 },      // Far Edges (Safe from pillars)
+    { x: -92, z: 0 },
+    { x: 0, z: 92 },
+    { x: 0, z: -92 }
 ];
 
 const AMMO_LOCATIONS = [
@@ -57,6 +71,7 @@ HEALTH_LOCATIONS.forEach(loc => { healthPickups[loc.id] = { ...loc, active: true
 
 function getSafeSpawn() {
     const pick = SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
+    // Reduced random offset to 0.5 to ensure they stay in the safe zone
     return { x: pick.x + (Math.random()-0.5), z: pick.z + (Math.random()-0.5) };
 }
 
@@ -68,16 +83,14 @@ io.on('connection', (socket) => {
         const currentCount = Object.keys(players).length;
         const botId = Object.keys(players).find(id => players[id].isBot);
 
-        // --- 1. CHECK SERVER CAP ---
+        // Server Cap Logic
         if (currentCount >= MAX_PLAYERS) {
             if (botId) {
-                // Server full, but we have a bot. Kick bot to make room.
                 delete players[botId];
                 io.emit('playerDisconnected', botId);
             } else {
-                // Server full of humans. Reject connection.
                 socket.emit('serverMessage', 'SERVER FULL! Cannot join.');
-                return; // Stop execution
+                return;
             }
         }
 
@@ -103,7 +116,6 @@ io.on('connection', (socket) => {
     });
 
     socket.on('addBot', () => {
-        // Check Cap before adding bot
         if (Object.keys(players).length >= MAX_PLAYERS) {
             socket.emit('serverMessage', 'Server Full: Cannot add Bot');
             return;
