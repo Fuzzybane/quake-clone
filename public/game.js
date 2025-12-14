@@ -159,7 +159,34 @@ socket.on('playerShot', (data) => {
     }
 });
 socket.on('healthUpdate', (data) => { if(data.id === socket.id) { myHealth = data.health; updateHUD(); document.body.style.boxShadow = "inset 0 0 50px red"; setTimeout(() => document.body.style.boxShadow = "none", 100); } });
-socket.on('playerRespawn', (data) => { if (data.id === socket.id) { controls.getObject().position.set(data.x, data.y, data.z); velocity.set(0,0,0); myHealth = 100; updateHUD(); } else if (players[data.id]) players[data.id].mesh.position.set(data.x, data.y, data.z); });
+
+// NEW: Handle Death
+socket.on('playerDied', (id) => {
+    if (id === socket.id) {
+        // Local Player Died
+        document.getElementById('winner-text').innerText = "RESPAWNING...";
+        document.getElementById('restart-timer').innerText = "";
+        document.getElementById('game-over-overlay').style.display = 'flex';
+    } else if (players[id]) {
+        // Remote Player/Bot Died
+        players[id].mesh.visible = false;
+    }
+});
+
+// NEW: Handle Respawn (Restore visibility)
+socket.on('playerRespawn', (data) => { 
+    if (data.id === socket.id) { 
+        controls.getObject().position.set(data.x, data.y, data.z); 
+        velocity.set(0,0,0); 
+        myHealth = 100; 
+        updateHUD(); 
+        document.getElementById('game-over-overlay').style.display = 'none';
+    } else if (players[data.id]) {
+        players[data.id].mesh.position.set(data.x, data.y, data.z);
+        players[data.id].mesh.visible = true; // Show mesh again
+    } 
+});
+
 socket.on('ammoState', (serverAmmo) => { for(let id in serverAmmo) { createAmmoBox(serverAmmo[id]); if(!serverAmmo[id].active) ammoMeshes[id].visible = false; } });
 socket.on('ammoTaken', (id) => { if(ammoMeshes[id]) ammoMeshes[id].visible = false; });
 socket.on('ammoRespawn', (id) => { if(ammoMeshes[id]) ammoMeshes[id].visible = true; });
@@ -222,20 +249,16 @@ if(joinBtn) {
         document.getElementById('hud').style.display = 'flex'; 
         document.getElementById('crosshair').style.display = 'block';
         
-        // Init Game if not ready
         if(!scene) init(); 
-        
         initAudio(); 
         gameActive = true; 
         
-        // Load cached map if we missed the socket event
         if(cachedMapData && !mapLoaded) {
             createLevel(cachedMapData);
             mapLoaded = true;
         }
 
-        animate(); // Start Loop
-        
+        animate(); 
         socket.emit('joinGame', { nickname: nickname, fragLimit: fragLimit });
     });
 }
@@ -257,7 +280,6 @@ function init() {
     dir.shadow.camera.left = -100; dir.shadow.camera.right = 100; dir.shadow.camera.top = 100; dir.shadow.camera.bottom = -100;
     scene.add(dir);
 
-    // Initial Safe Floor (Prevents void falling before map load)
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), MAT_FLOOR);
     MAT_FLOOR.map.repeat.set(22,22); floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; floor.name = "floor"; 
     scene.add(floor);
@@ -299,16 +321,13 @@ function updateWeaponVisibility() { gunModels.forEach((m, i) => m.visible = (i =
 function createLevel(mapData) {
     if(!mapData) return;
     
-    // Clear old objects
     objects.forEach(o => scene.remove(o)); objects = [];
     groundObjects.forEach(o => scene.remove(o)); groundObjects = [];
     
-    // Recreate Floor
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), MAT_FLOOR);
     MAT_FLOOR.map.repeat.set(22,22); floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; floor.name = "floor"; scene.add(floor);
     groundObjects.push(floor); 
 
-    // Walls
     if(mapData.walls) {
         mapData.walls.forEach(w => {
             const m = new THREE.Mesh(new THREE.BoxGeometry(w.w, 8, w.d), MAT_WALL);
@@ -317,7 +336,6 @@ function createLevel(mapData) {
         });
     }
 
-    // Platforms
     if(mapData.platforms) {
         mapData.platforms.forEach(p => {
             const m = new THREE.Mesh(new THREE.BoxGeometry(p.w, 1, p.d), MAT_FLOOR);
@@ -326,7 +344,6 @@ function createLevel(mapData) {
         });
     }
 
-    // Ramps
     if(mapData.ramps) {
         mapData.ramps.forEach(r => {
             const len = 30; const targetHeight = 12.5; const angle = Math.asin(targetHeight / len);
@@ -374,20 +391,7 @@ function createHumanoidMesh(isBot) {
     g.traverse(o=>{if(o.isMesh)o.castShadow=true;});
     return g;
 }
-
-// FIX: ADDED MISSING 'lastPos' to prevent undefined error
-function addOtherPlayer(p) { 
-    const m = createHumanoidMesh(p.isBot); 
-    m.position.set(p.x,p.y,p.z); 
-    scene.add(m); 
-    players[p.id] = {
-        mesh: m, 
-        info: p, 
-        animTime: 0, 
-        lastMoveTime: 0,
-        lastPos: new THREE.Vector3(p.x, p.y, p.z) // <--- THIS WAS THE FIX
-    }; 
-}
+function addOtherPlayer(p) { const m = createHumanoidMesh(p.isBot); m.position.set(p.x,p.y,p.z); scene.add(m); players[p.id]={mesh:m, info:p, animTime:0, lastMoveTime:0, lastPos:new THREE.Vector3(p.x,p.y,p.z) }; }
 
 function onShoot() {
     if (!controls.isLocked) return;

@@ -9,17 +9,17 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// --- GLOBAL STATE ---
 let players = {};
 let ammoPickups = {}; 
 let healthPickups = {}; 
+let currentMap = { walls: [], platforms: [], ramps: [], spawns: [] }; 
 const MAP_SEED = Math.random(); 
 
 const MAX_PLAYERS = 16; 
 let fragLimit = 10; 
 let gameActive = true;
 let botCount = 0;
-
-let currentMap = { walls: [], platforms: [], ramps: [], spawns: [], ammo: [], health: [] };
 
 const BOT_NAMES = [
     "Razor", "Blade", "Tank", "Viper", "Ghost", "Sarge", "Ranger", "Phobos", "Crash", "Doom", 
@@ -33,28 +33,28 @@ function getUniqueBotName() {
     return available.length > 0 ? available[Math.floor(Math.random() * available.length)] : `Unit-${Math.floor(Math.random() * 999)}`;
 }
 
-// --- MAP GENERATION ---
+// --- PROCEDURAL MAP GENERATOR ---
 function generateMap() {
-    currentMap = { walls: [], platforms: [], ramps: [], spawns: [], ammo: [], health: [] };
+    currentMap = { walls: [], platforms: [], ramps: [], spawns: [] };
     ammoPickups = {};
     healthPickups = {};
-
-    // 1. CATWALK RING (Height 12)
+    
+    // 1. CATWALK RING
     currentMap.platforms.push({ x: -50, z: 70, w: 80, d: 20 });
     currentMap.platforms.push({ x: 50, z: 70, w: 80, d: 20 });
-    currentMap.platforms.push({ x: 0, z: 70, w: 20, d: 20 }); // Pad
+    currentMap.platforms.push({ x: 0, z: 70, w: 20, d: 20 }); 
 
     currentMap.platforms.push({ x: -50, z: -70, w: 80, d: 20 });
     currentMap.platforms.push({ x: 50, z: -70, w: 80, d: 20 });
-    currentMap.platforms.push({ x: 0, z: -70, w: 20, d: 20 }); // Pad
+    currentMap.platforms.push({ x: 0, z: -70, w: 20, d: 20 }); 
 
     currentMap.platforms.push({ x: 70, z: -50, w: 20, d: 80 }); 
     currentMap.platforms.push({ x: 70, z: 50, w: 20, d: 80 });
-    currentMap.platforms.push({ x: 70, z: 0, w: 20, d: 20 }); // Pad
+    currentMap.platforms.push({ x: 70, z: 0, w: 20, d: 20 }); 
 
     currentMap.platforms.push({ x: -70, z: -50, w: 20, d: 80 });
     currentMap.platforms.push({ x: -70, z: 50, w: 20, d: 80 });
-    currentMap.platforms.push({ x: -70, z: 0, w: 20, d: 20 }); // Pad
+    currentMap.platforms.push({ x: -70, z: 0, w: 20, d: 20 }); 
 
     // 2. RAMPS
     currentMap.ramps.push({ x: 0, z: 45, dir: 'North' });
@@ -68,7 +68,7 @@ function generateMap() {
     currentMap.walls.push({ x: 35, z: -35, w: 10, d: 10 });
     currentMap.walls.push({ x: -35, z: -35, w: 10, d: 10 });
 
-    // 4. SPAWNS (Ensuring Center is valid)
+    // 4. SPAWNS
     currentMap.spawns = [
         { x: 0, z: 0 }, 
         { x: 85, z: 85 }, { x: -85, z: -85 }, { x: 85, z: -85 }, { x: -85, z: 85 }, 
@@ -94,20 +94,16 @@ generateMap();
 function isPosSafe(x, z) {
     if (isNaN(x) || isNaN(z)) return false;
     if (x > 90 || x < -90 || z > 90 || z < -90) return false;
-
-    // Walls
     for (let w of currentMap.walls) {
         const halfW = (w.w/2) + 4; 
         const halfD = (w.d/2) + 4;
         if (x > w.x - halfW && x < w.x + halfW && z > w.z - halfD && z < w.z + halfD) return false;
     }
-    // Platforms (Don't spawn inside pillars)
     for (let p of currentMap.platforms) {
         const halfW = (p.w/2) + 2;
         const halfD = (p.d/2) + 2;
         if (x > p.x - halfW && x < p.x + halfW && z > p.z - halfD && z < p.z + halfD) return false;
     }
-    // Ramps
     for (let r of currentMap.ramps) {
         if(Math.abs(x - r.x) < 8 && Math.abs(z - r.z) < 18) return false;
     }
@@ -115,9 +111,7 @@ function isPosSafe(x, z) {
 }
 
 function getSafeSpawn() {
-    // Safety check if map generated incorrectly
     if (!currentMap.spawns || currentMap.spawns.length === 0) return { x: 0, z: 0 };
-
     let attempts = 0;
     while(attempts < 50) {
         const pick = currentMap.spawns[Math.floor(Math.random() * currentMap.spawns.length)];
@@ -135,8 +129,6 @@ function checkBotWallCollision(x, z) {
 
 function getBotHeight(x, z, currentY) {
     if (isNaN(x) || isNaN(z)) return 2;
-
-    // 1. Ramps
     for (let r of currentMap.ramps) {
         let dx = x - r.x;
         let dz = z - r.z;
@@ -145,15 +137,11 @@ function getBotHeight(x, z, currentY) {
         if (r.dir === 'East' && Math.abs(dz) < 4 && dx > -15 && dx < 15) return 2 + ((dx + 15) / 30 * 12);
         if (r.dir === 'West' && Math.abs(dz) < 4 && dx > -15 && dx < 15) return 2 + ((15 - dx) / 30 * 12);
     }
-
-    // 2. Catwalks
     for (let p of currentMap.platforms) {
         const halfW = p.w / 2;
         const halfD = p.d / 2;
         if (x > p.x - halfW && x < p.x + halfW && z > p.z - halfD && z < p.z + halfD) {
-            // FIX: Only snap to 14 if we are ALREADY high (e.g. at top of ramp ~12)
-            // If we are walking on ground (Y=2), do NOT snap up.
-            if (currentY > 10) return 14; 
+            if (currentY > 6) return 14; 
             else return 2;
         }
     }
@@ -164,6 +152,7 @@ function getBotHeight(x, z, currentY) {
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
     socket.emit('updatePlayerList', Object.keys(players).length);
+    socket.emit('mapConfig', currentMap);
 
     socket.on('joinGame', (data) => {
         const currentCount = Object.keys(players).length;
@@ -178,7 +167,18 @@ io.on('connection', (socket) => {
         const nickname = data.nickname || "Unknown";
         if (Object.keys(players).length === 0) if(data.fragLimit) fragLimit = parseInt(data.fragLimit);
 
-        players[socket.id] = { id: socket.id, x: spawn.x, y: 5, z: spawn.z, rotation: 0, nickname: nickname, health: 100, isBot: false, score: 0 };
+        players[socket.id] = { 
+            id: socket.id, 
+            x: spawn.x, 
+            y: 20, // FIX: Spawn High up to prevent floor clipping
+            z: spawn.z, 
+            rotation: 0, 
+            nickname: nickname, 
+            health: 100, 
+            isBot: false, 
+            score: 0, 
+            isDead: false 
+        };
 
         socket.emit('mapConfig', currentMap);
         socket.emit('ammoState', ammoPickups);
@@ -194,7 +194,22 @@ io.on('connection', (socket) => {
         const botId = 'bot_' + Math.random().toString(36).substr(2, 9);
         const spawn = getSafeSpawn();
         const botName = getUniqueBotName();
-        players[botId] = { id: botId, x: spawn.x, y: 5, z: spawn.z, rotation: 0, nickname: botName, health: 100, isBot: true, score: 0, targetX: 0, targetZ: 0, lastShot: 0, weapon: 'BLASTER' };
+        players[botId] = { 
+            id: botId, 
+            x: spawn.x, 
+            y: 20, // FIX: Bot spawns high up too
+            z: spawn.z, 
+            rotation: 0, 
+            nickname: botName, 
+            health: 100, 
+            isBot: true, 
+            score: 0, 
+            targetX: 0, 
+            targetZ: 0, 
+            lastShot: 0, 
+            weapon: 'BLASTER', 
+            isDead: false
+        };
         io.emit('newPlayer', players[botId]);
         io.emit('updatePlayerList', Object.keys(players).length);
         io.emit('serverMessage', `${botName} has joined`);
@@ -213,7 +228,7 @@ io.on('connection', (socket) => {
     socket.on('chatMessage', (msg) => { if(players[socket.id]) io.emit('chatMessage', { name: players[socket.id].nickname, text: msg }); });
 
     socket.on('playerMovement', (movementData) => {
-        if (players[socket.id]) {
+        if (players[socket.id] && !players[socket.id].isDead) {
             players[socket.id].x = movementData.x;
             players[socket.id].y = movementData.y;
             players[socket.id].z = movementData.z;
@@ -222,7 +237,10 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('shoot', (weaponData) => { socket.broadcast.emit('playerShot', { id: socket.id, weapon: weaponData }); });
+    socket.on('shoot', (weaponData) => { 
+        if(players[socket.id] && !players[socket.id].isDead) 
+            socket.broadcast.emit('playerShot', { id: socket.id, weapon: weaponData }); 
+    });
 
     socket.on('playerHit', (victimId, damage) => {
         if (!gameActive) return;
@@ -267,19 +285,32 @@ io.on('connection', (socket) => {
 
 function handleDamage(victimId, attacker, damage) {
     const victim = players[victimId];
-    if (victim) {
+    if (victim && !victim.isDead) {
         victim.health -= damage;
         io.emit('healthUpdate', { id: victimId, health: victim.health });
+        
         if (victim.health <= 0) {
-            const spawn = getSafeSpawn();
-            victim.health = 100; victim.x = spawn.x; victim.z = spawn.z; victim.y = 5; 
-            io.emit('playerRespawn', victim);
+            victim.isDead = true; 
             if (attacker && attacker.id !== victim.id) {
                 attacker.score++;
                 io.emit('scoreUpdate', { id: attacker.id, score: attacker.score });
                 io.emit('serverMessage', `${attacker.nickname} fragged ${victim.nickname}`);
                 if (attacker.score >= fragLimit) endGame(attacker.nickname);
-            } else { io.emit('serverMessage', `${victim.nickname} died`); }
+            } else {
+                io.emit('serverMessage', `${victim.nickname} died`);
+            }
+            io.emit('playerDied', victim.id);
+            setTimeout(() => {
+                if(players[victim.id]) { 
+                    const spawn = getSafeSpawn();
+                    victim.health = 100;
+                    victim.x = spawn.x;
+                    victim.z = spawn.z;
+                    victim.y = 20; // FIX: Respawn High
+                    victim.isDead = false;
+                    io.emit('playerRespawn', victim);
+                }
+            }, 3000);
         }
     }
 }
@@ -291,13 +322,8 @@ function endGame(winnerName) {
         gameActive = true;
         players = {}; 
         generateMap();
-        for (let id in players) {
-            players[id].score = 0; players[id].health = 100;
-            const spawn = getSafeSpawn();
-            players[id].x = spawn.x; players[id].z = spawn.z; players[id].y = 5;
-        }
         io.emit('mapConfig', currentMap);
-        io.emit('gameReset', players);
+        io.emit('gameReset', players); 
     }, 6000); 
 }
 
@@ -305,62 +331,57 @@ const BOT_WEAPONS = ['BLASTER', 'SHOTGUN', 'RAILGUN'];
 setInterval(() => {
     if (!gameActive) return;
     for (const botId in players) {
-        if (players[botId].isBot) {
-            const bot = players[botId];
-            
-            // AI Logic
-            let target = null; let minDist = 1000;
-            for (const pid in players) {
-                if (pid !== botId && players[pid].health > 0) {
-                    const p = players[pid];
-                    const d = Math.sqrt(Math.pow(p.x - bot.x, 2) + Math.pow(p.z - bot.z, 2));
-                    if (d < minDist) { minDist = d; target = p; }
-                }
-            }
-            if(Math.random() < 0.01) bot.weapon = BOT_WEAPONS[Math.floor(Math.random() * BOT_WEAPONS.length)];
-            
-            if (target && minDist < 60) {
-                const dx = target.x - bot.x; const dz = target.z - bot.z;
-                const angle = Math.atan2(dx, dz);
-                const nextX = bot.x + Math.sin(angle) * 0.15;
-                const nextZ = bot.z + Math.cos(angle) * 0.15;
-                if(!checkBotWallCollision(nextX, nextZ)) { bot.x = nextX; bot.z = nextZ; }
-                bot.rotation = angle;
-            } else {
-                const dx = bot.targetX - bot.x; const dz = bot.targetZ - bot.z;
-                const dist = Math.sqrt(dx*dx + dz*dz);
-                if (dist < 2 || checkBotWallCollision(bot.x + (dx/dist), bot.z + (dz/dist))) {
-                    bot.targetX = (Math.random() * 160) - 80; bot.targetZ = (Math.random() * 160) - 80;
-                } else {
-                    bot.x += (dx/dist) * 0.1; bot.z += (dz/dist) * 0.1;
-                    bot.rotation = Math.atan2(dx, dz);
-                }
-            }
-            
-            bot.y = getBotHeight(bot.x, bot.z, bot.y);
-            // Anti-NaN Check
-            if (isNaN(bot.y)) bot.y = 2;
-            if (isNaN(bot.x)) bot.x = 0;
-            if (isNaN(bot.z)) bot.z = 0;
+        const bot = players[botId];
+        
+        if (!bot.isBot || bot.isDead) continue;
 
-            if (bot.y <= 2.1 && Math.random() < 0.005) bot.y += 3;
-
-            if (target && minDist < 50) {
-                const now = Date.now();
-                let cooldown = 1000; let damage = 10;
-                if(bot.weapon === 'SHOTGUN') { cooldown = 1500; damage = 8; }
-                if(bot.weapon === 'RAILGUN') { cooldown = 2000; damage = 40; }
-                if (now - (bot.lastShot || 0) > cooldown) {
-                    bot.lastShot = now;
-                    io.emit('playerShot', { id: bot.id, weapon: {type: bot.weapon} });
-                    let hitChance = 0.3;
-                    if(bot.weapon === 'SHOTGUN') hitChance = 0.5;
-                    if(bot.weapon === 'RAILGUN') hitChance = 0.2;
-                    if (Math.random() < hitChance) handleDamage(target.id, bot, damage);
-                }
+        let target = null; let minDist = 1000;
+        for (const pid in players) {
+            if (pid !== botId && players[pid].health > 0 && !players[pid].isDead) {
+                const p = players[pid];
+                const d = Math.sqrt(Math.pow(p.x - bot.x, 2) + Math.pow(p.z - bot.z, 2));
+                if (d < minDist) { minDist = d; target = p; }
             }
-            io.emit('playerMoved', bot);
         }
+        
+        if(Math.random() < 0.01) bot.weapon = BOT_WEAPONS[Math.floor(Math.random() * BOT_WEAPONS.length)];
+        
+        if (target && minDist < 60) {
+            const dx = target.x - bot.x; const dz = target.z - bot.z;
+            const angle = Math.atan2(dx, dz);
+            const nextX = bot.x + Math.sin(angle) * 0.15;
+            const nextZ = bot.z + Math.cos(angle) * 0.15;
+            if(!checkBotWallCollision(nextX, nextZ)) { bot.x = nextX; bot.z = nextZ; }
+            bot.rotation = angle;
+        } else {
+            const dx = bot.targetX - bot.x; const dz = bot.targetZ - bot.z;
+            const dist = Math.sqrt(dx*dx + dz*dz);
+            if (dist < 2 || !isPosSafe(bot.x + (dx/dist), bot.z + (dz/dist))) {
+                bot.targetX = (Math.random() * 160) - 80; bot.targetZ = (Math.random() * 160) - 80;
+            } else {
+                bot.x += (dx/dist) * 0.1; bot.z += (dz/dist) * 0.1;
+                bot.rotation = Math.atan2(dx, dz);
+            }
+        }
+        
+        bot.y = getBotHeight(bot.x, bot.z, bot.y);
+        if (bot.y <= 2.1 && Math.random() < 0.005) bot.y += 3;
+
+        if (target && minDist < 50) {
+            const now = Date.now();
+            let cooldown = 1000; let damage = 10;
+            if(bot.weapon === 'SHOTGUN') { cooldown = 1500; damage = 8; }
+            if(bot.weapon === 'RAILGUN') { cooldown = 2000; damage = 40; }
+            if (now - (bot.lastShot || 0) > cooldown) {
+                bot.lastShot = now;
+                io.emit('playerShot', { id: bot.id, weapon: {type: bot.weapon} });
+                let hitChance = 0.3;
+                if(bot.weapon === 'SHOTGUN') hitChance = 0.5;
+                if(bot.weapon === 'RAILGUN') hitChance = 0.2;
+                if (Math.random() < hitChance) handleDamage(target.id, bot, damage);
+            }
+        }
+        io.emit('playerMoved', bot);
     }
 }, 1000 / 30); 
 
