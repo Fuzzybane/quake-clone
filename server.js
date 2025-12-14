@@ -21,30 +21,17 @@ let gameActive = true;
 let botCount = 0;
 
 // --- MAP COLLISION DATA ---
+// Simple Box Collision: x, z (center), width, depth (approx radius 7)
 const MAP_OBSTACLES = [
     { x: 15, z: 15 }, { x: -15, z: -15 }, { x: 15, z: -15 }, { x: -15, z: 15 },
     { x: 40, z: 40 }, { x: 40, z: -40 }, { x: -40, z: 40 }, { x: -40, z: -40 },
     { x: 80, z: 80 }, { x: -80, z: -80 }, { x: 80, z: -80 }, { x: -80, z: 80 }
 ];
 
-// --- FIXED SAFE SPAWN POINTS ---
-// Verified to be far away from the obstacle coordinates above
 const SPAWN_POINTS = [
-    { x: 0, z: 0 },       // Dead Center (Safe)
-    { x: 0, z: 30 },      // Between Center(15) and L-Wall(40)
-    { x: 0, z: -30 }, 
-    { x: 30, z: 0 }, 
-    { x: -30, z: 0 },
-    
-    { x: 60, z: 60 },     // Open area between L-Wall(40) and Outer Pillar(80)
-    { x: -60, z: -60 },
-    { x: 60, z: -60 },
-    { x: -60, z: 60 },
-
-    { x: 92, z: 0 },      // Far Edges (Safe from pillars)
-    { x: -92, z: 0 },
-    { x: 0, z: 92 },
-    { x: 0, z: -92 }
+    { x: 0, z: 0 }, { x: 20, z: 0 }, { x: -20, z: 0 }, { x: 0, z: 20 }, { x: 0, z: -20 },
+    { x: 85, z: 85 }, { x: -85, z: -85 }, { x: 85, z: -85 }, { x: -85, z: 85 },
+    { x: 50, z: 0 }, { x: -50, z: 0 }, { x: 0, z: 50 }, { x: 0, z: -50 }
 ];
 
 const AMMO_LOCATIONS = [
@@ -69,10 +56,23 @@ const HEALTH_LOCATIONS = [
 AMMO_LOCATIONS.forEach(loc => { ammoPickups[loc.id] = { ...loc, active: true }; });
 HEALTH_LOCATIONS.forEach(loc => { healthPickups[loc.id] = { ...loc, active: true }; });
 
+// --- FIXED: SPAWN LOGIC CHECKS WALLS ---
 function getSafeSpawn() {
-    const pick = SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
-    // Reduced random offset to 0.5 to ensure they stay in the safe zone
-    return { x: pick.x + (Math.random()-0.5), z: pick.z + (Math.random()-0.5) };
+    let attempts = 0;
+    while(attempts < 20) {
+        const pick = SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
+        // Add random variance
+        const tx = pick.x + (Math.random() - 0.5) * 4; 
+        const tz = pick.z + (Math.random() - 0.5) * 4;
+        
+        // Check if this specific point is inside a wall
+        if (!checkBotWallCollision(tx, tz)) {
+            return { x: tx, z: tz };
+        }
+        attempts++;
+    }
+    // Fallback to absolute center if 20 attempts fail
+    return { x: 0, z: 0 };
 }
 
 io.on('connection', (socket) => {
@@ -83,7 +83,6 @@ io.on('connection', (socket) => {
         const currentCount = Object.keys(players).length;
         const botId = Object.keys(players).find(id => players[id].isBot);
 
-        // Server Cap Logic
         if (currentCount >= MAX_PLAYERS) {
             if (botId) {
                 delete players[botId];
@@ -233,9 +232,16 @@ function endGame(winnerName) {
 }
 
 function checkBotWallCollision(x, z) {
+    // Check Arena Bounds
     if (x > 95 || x < -95 || z > 95 || z < -95) return true;
+    
+    // Check Map Obstacles
     for(let obs of MAP_OBSTACLES) {
-        if (Math.abs(x - obs.x) < 7 && Math.abs(z - obs.z) < 7) return true;
+        // Wall size 10, so half is 5. Player radius ~1-2. 
+        // 7 gives a safe buffer so they don't spawn clipped inside.
+        if (Math.abs(x - obs.x) < 7 && Math.abs(z - obs.z) < 7) {
+            return true;
+        }
     }
     return false;
 }

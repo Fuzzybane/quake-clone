@@ -140,11 +140,8 @@ function init() {
     renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true; document.body.appendChild(renderer.domElement);
     
-    // LIGHTING FIX
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8); // Brighter
-    scene.add(hemi);
-    const dir = new THREE.DirectionalLight(0xffffff, 1.0); // Stronger sun
-    dir.position.set(20, 60, 20); dir.castShadow = true; 
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8); scene.add(hemi);
+    const dir = new THREE.DirectionalLight(0xffffff, 1.0); dir.position.set(20, 60, 20); dir.castShadow = true; 
     dir.shadow.camera.left = -100; dir.shadow.camera.right = 100; dir.shadow.camera.top = 100; dir.shadow.camera.bottom = -100;
     scene.add(dir);
 
@@ -261,24 +258,17 @@ function createLevel() {
         scene.add(m); objects.push(m); m.geometry.computeBoundingBox(); m.BBox = new THREE.Box3().setFromObject(m);
     }
     
-    // RESTORED L-WALLS & PILLARS
     addWall(15, 15); addWall(-15, -15); addWall(15, -15); addWall(-15, 15);
-    
-    addWall(40, 40); addWall(40, 32); 
-    addWall(40, -40); addWall(40, -32);
-    addWall(-40, 40); addWall(-40, 32);
-    addWall(-40, -40); addWall(-40, -32);
-
+    addWall(40, 40); addWall(40, -40); addWall(-40, 40); addWall(-40, -40);
+    addWall(60, 0, 1, 4); addWall(-60, 0, 1, 4); addWall(0, 60, 4, 1); addWall(0, -60, 4, 1);
     addWall(80, 80); addWall(-80, -80); addWall(80, -80); addWall(-80, 80);
     createBorderWalls();
 
-    // 2ND FLOOR (Catwalks) - Height 12
     createPlatform(0, 55, 140, 10, 12); 
     createPlatform(0, -55, 140, 10, 12); 
     createPlatform(55, 0, 10, 100, 12); 
     createPlatform(-55, 0, 10, 100, 12); 
 
-    // RAMPS
     createRamp(0, 37.5, 35, 12.5, 'North');
     createRamp(0, -37.5, 35, 12.5, 'South');
     createRamp(37.5, 0, 35, 12.5, 'East');
@@ -337,7 +327,6 @@ function createHealthBox(data) {
     scene.add(m); healthMeshes[data.id] = m; m.userData = data;
 }
 
-// FIX: Head is now correctly assigned to variable before adding
 function createHumanoidMesh(isBot) {
     const g = new THREE.Group(); const mat = new THREE.MeshLambertMaterial({color:isBot?0xff3333:0x33ff33});
     
@@ -436,7 +425,8 @@ function animate() {
         controls.getObject().position.y += (velocity.y * delta);
         groundRaycaster.set(controls.getObject().position, new THREE.Vector3(0, -1, 0));
         const hits = groundRaycaster.intersectObjects(groundObjects);
-        if(hits.length > 0 && hits[0].distance < 2.0 && velocity.y <= 0) { velocity.y = 0; controls.getObject().position.y = hits[0].point.y + 2.0; canJump = true; } 
+        // FIX: Increased threshold to 2.2 to prevent falling glitch
+        if(hits.length > 0 && hits[0].distance < 2.2 && velocity.y <= 0) { velocity.y = 0; controls.getObject().position.y = hits[0].point.y + 2.0; canJump = true; } 
         else { velocity.y -= 9.8 * 100.0 * delta; }
         if (controls.getObject().position.y < -10) { velocity.y = 0; controls.getObject().position.y = 20; controls.getObject().position.x=0; controls.getObject().position.z=0; }
 
