@@ -247,8 +247,9 @@ function updateWeaponVisibility() {
 
 // --- MAP & RAMP GENERATION ---
 function createLevel() {
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), MAT_FLOOR);
-    MAT_FLOOR.map.repeat.set(20,20); floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; floor.name = "floor"; scene.add(floor);
+    // FIX: Increased floor size to 220 to close the gap
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), MAT_FLOOR);
+    MAT_FLOOR.map.repeat.set(22,22); floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; floor.name = "floor"; scene.add(floor);
     groundObjects.push(floor); 
 
     const boxGeo = new THREE.BoxGeometry(10, 8, 10);
@@ -259,8 +260,10 @@ function createLevel() {
     }
     
     addWall(15, 15); addWall(-15, -15); addWall(15, -15); addWall(-15, 15);
-    addWall(40, 40); addWall(40, -40); addWall(-40, 40); addWall(-40, -40);
-    addWall(60, 0, 1, 4); addWall(-60, 0, 1, 4); addWall(0, 60, 4, 1); addWall(0, -60, 4, 1);
+    addWall(40, 40); addWall(40, 32); 
+    addWall(40, -40); addWall(40, -32);
+    addWall(-40, 40); addWall(-40, 32);
+    addWall(-40, -40); addWall(-40, -32);
     addWall(80, 80); addWall(-80, -80); addWall(80, -80); addWall(-80, 80);
     createBorderWalls();
 
@@ -425,7 +428,6 @@ function animate() {
         controls.getObject().position.y += (velocity.y * delta);
         groundRaycaster.set(controls.getObject().position, new THREE.Vector3(0, -1, 0));
         const hits = groundRaycaster.intersectObjects(groundObjects);
-        // FIX: Increased threshold to 2.2 to prevent falling glitch
         if(hits.length > 0 && hits[0].distance < 2.2 && velocity.y <= 0) { velocity.y = 0; controls.getObject().position.y = hits[0].point.y + 2.0; canJump = true; } 
         else { velocity.y -= 9.8 * 100.0 * delta; }
         if (controls.getObject().position.y < -10) { velocity.y = 0; controls.getObject().position.y = 20; controls.getObject().position.x=0; controls.getObject().position.z=0; }

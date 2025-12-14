@@ -20,11 +20,18 @@ let fragLimit = 10;
 let gameActive = true;
 let botCount = 0;
 
-// --- MAP COLLISION DATA ---
-// Simple Box Collision: x, z (center), width, depth (approx radius 7)
+// --- MAP COLLISION DATA (Server Side) ---
 const MAP_OBSTACLES = [
+    // Center Pillars
     { x: 15, z: 15 }, { x: -15, z: -15 }, { x: 15, z: -15 }, { x: -15, z: 15 },
+    
+    // L-Walls (Corner Piece)
     { x: 40, z: 40 }, { x: 40, z: -40 }, { x: -40, z: 40 }, { x: -40, z: -40 },
+    
+    // L-Walls (Extension Piece - FIXED: Added these so bots don't clip)
+    { x: 40, z: 32 }, { x: 40, z: -32 }, { x: -40, z: 32 }, { x: -40, z: -32 },
+
+    // Outer Pillars
     { x: 80, z: 80 }, { x: -80, z: -80 }, { x: 80, z: -80 }, { x: -80, z: 80 }
 ];
 
@@ -56,22 +63,19 @@ const HEALTH_LOCATIONS = [
 AMMO_LOCATIONS.forEach(loc => { ammoPickups[loc.id] = { ...loc, active: true }; });
 HEALTH_LOCATIONS.forEach(loc => { healthPickups[loc.id] = { ...loc, active: true }; });
 
-// --- FIXED: SPAWN LOGIC CHECKS WALLS ---
+// Spawn Logic
 function getSafeSpawn() {
     let attempts = 0;
     while(attempts < 20) {
         const pick = SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
-        // Add random variance
         const tx = pick.x + (Math.random() - 0.5) * 4; 
         const tz = pick.z + (Math.random() - 0.5) * 4;
         
-        // Check if this specific point is inside a wall
         if (!checkBotWallCollision(tx, tz)) {
             return { x: tx, z: tz };
         }
         attempts++;
     }
-    // Fallback to absolute center if 20 attempts fail
     return { x: 0, z: 0 };
 }
 
@@ -232,16 +236,11 @@ function endGame(winnerName) {
 }
 
 function checkBotWallCollision(x, z) {
-    // Check Arena Bounds
+    // Arena Boundaries
     if (x > 95 || x < -95 || z > 95 || z < -95) return true;
-    
-    // Check Map Obstacles
     for(let obs of MAP_OBSTACLES) {
-        // Wall size 10, so half is 5. Player radius ~1-2. 
-        // 7 gives a safe buffer so they don't spawn clipped inside.
-        if (Math.abs(x - obs.x) < 7 && Math.abs(z - obs.z) < 7) {
-            return true;
-        }
+        // Wall size is 10 (half 5), bot radius approx 2. Safe distance 7.
+        if (Math.abs(x - obs.x) < 7 && Math.abs(z - obs.z) < 7) return true;
     }
     return false;
 }
