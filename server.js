@@ -18,30 +18,19 @@ const MAP_SEED = Math.random();
 const MAX_PLAYERS = 16; 
 let fragLimit = 10; 
 let gameActive = true;
+let botCount = 0;
 
 // --- BOT NAMES LIST ---
 const BOT_NAMES = [
-    "Razor", "Blade", "Tank", "Viper", "Ghost", 
-    "Sarge", "Ranger", "Phobos", "Crash", "Doom", 
-    "Slash", "Bones", "Orbb", "Hunter", "Klesk", 
-    "Anarki", "Bitterman", "Daemia", "Patriot", "Stripe", 
-    "Visor", "Xaero", "Uriel", "Keel", "Sorlag",
-    "Reaper", "Glitch", "Zero", "Vortex", "Titan"
+    "Razor", "Blade", "Tank", "Viper", "Ghost", "Sarge", "Ranger", "Phobos", "Crash", "Doom", 
+    "Slash", "Bones", "Orbb", "Hunter", "Klesk", "Anarki", "Bitterman", "Daemia", "Patriot", "Stripe", 
+    "Visor", "Xaero", "Uriel", "Keel", "Sorlag", "Reaper", "Glitch", "Zero", "Vortex", "Titan"
 ];
 
 function getUniqueBotName() {
-    // Get list of current names
     const takenNames = Object.values(players).map(p => p.nickname);
-    // Find names that aren't taken
     const available = BOT_NAMES.filter(name => !takenNames.includes(name));
-    
-    if (available.length > 0) {
-        // Pick a random available name
-        return available[Math.floor(Math.random() * available.length)];
-    } else {
-        // Fallback if we run out of cool names
-        return `Unit-${Math.floor(Math.random() * 999)}`;
-    }
+    return available.length > 0 ? available[Math.floor(Math.random() * available.length)] : `Unit-${Math.floor(Math.random() * 999)}`;
 }
 
 // --- MAP COLLISION DATA ---
@@ -102,19 +91,36 @@ function checkBotWallCollision(x, z) {
     return false;
 }
 
-function getBotHeight(x, z) {
-    let y = 2; 
-    // Catwalks
-    if ((x > -70 && x < 70 && ((z > 50 && z < 60) || (z < -50 && z > -60))) || 
-        ((x > 50 && x < 60) || (x < -50 && x > -60)) && z > -50 && z < 50) return 14;
-
-    // Ramps
+// FIX: Added currentY parameter to determine if bot is under or on top of catwalks
+function getBotHeight(x, z, currentY) {
+    // 1. Check Ramps First (They connect ground to air, assume always climbable)
+    
+    // North Ramp (+Z)
     if (x > -4 && x < 4 && z > 20 && z < 50) return 2 + ((z - 20) / 30 * 12);
+    // South Ramp (-Z)
     if (x > -4 && x < 4 && z < -20 && z > -50) return 2 + ((-20 - z) / 30 * 12);
+    // East Ramp (+X)
     if (z > -4 && z < 4 && x > 20 && x < 50) return 2 + ((x - 20) / 30 * 12);
+    // West Ramp (-X)
     if (z > -4 && z < 4 && x < -20 && x > -50) return 2 + ((-20 - x) / 30 * 12);
 
-    return y;
+    // 2. Check Catwalks
+    // Check if X/Z is within the Catwalk areas
+    const onCatwalkXZ = (
+        (x > -70 && x < 70 && ((z > 50 && z < 60) || (z < -50 && z > -60))) || 
+        ((x > 50 && x < 60) || (x < -50 && x > -60)) && z > -50 && z < 50
+    );
+
+    if (onCatwalkXZ) {
+        // LOGIC FIX:
+        // If bot is already high (> 6), snap to catwalk height (14).
+        // If bot is low (<= 6), stay on ground (2).
+        if (currentY > 6) return 14; 
+        else return 2;
+    }
+
+    // 3. Default Ground
+    return 2;
 }
 
 // --- SOCKET LOGIC ---
@@ -127,7 +133,6 @@ io.on('connection', (socket) => {
         const currentCount = Object.keys(players).length;
         const botId = Object.keys(players).find(id => players[id].isBot);
 
-        // Server Cap & Bot Replacement Logic
         if (currentCount >= MAX_PLAYERS) {
             if (botId) {
                 delete players[botId];
@@ -167,7 +172,7 @@ io.on('connection', (socket) => {
 
         const botId = 'bot_' + Math.random().toString(36).substr(2, 9);
         const spawn = getSafeSpawn();
-        const botName = getUniqueBotName(); // NEW: Get random unique name
+        const botName = getUniqueBotName(); 
         
         players[botId] = {
             id: botId, x: spawn.x, y: 5, z: spawn.z, rotation: 0,
@@ -239,6 +244,7 @@ io.on('connection', (socket) => {
         }
         
         if (Object.keys(players).length === 0) {
+            botCount = 0;
             gameActive = true;
         }
     });
@@ -332,7 +338,10 @@ setInterval(() => {
                 }
             }
 
-            bot.y = getBotHeight(bot.x, bot.z);
+            // FIX: Pass current Y to height check to prevent teleporting when walking under catwalks
+            bot.y = getBotHeight(bot.x, bot.z, bot.y);
+
+            // Gravity/Jump override (Only if on ground layer)
             if (bot.y <= 2.1 && Math.random() < 0.005) bot.y += 3;
 
             if (target && minDist < 50) {
