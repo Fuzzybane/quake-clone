@@ -18,27 +18,20 @@ const MAP_SEED = Math.random();
 const MAX_PLAYERS = 16; 
 let fragLimit = 10; 
 let gameActive = true;
-let botCount = 0;
+let botCount = 0; // Tracks bot names
 
-// --- MAP COLLISION DATA (Server Side) ---
+// --- MAP DATA ---
 const MAP_OBSTACLES = [
-    // Center Pillars
     { x: 15, z: 15 }, { x: -15, z: -15 }, { x: 15, z: -15 }, { x: -15, z: 15 },
-    
-    // L-Walls (Corner Piece)
     { x: 40, z: 40 }, { x: 40, z: -40 }, { x: -40, z: 40 }, { x: -40, z: -40 },
-    
-    // L-Walls (Extension Piece - FIXED: Added these so bots don't clip)
-    { x: 40, z: 32 }, { x: 40, z: -32 }, { x: -40, z: 32 }, { x: -40, z: -32 },
-
-    // Outer Pillars
+    { x: 40, z: 32 }, { x: 40, z: -32 }, { x: -40, z: 32 }, { x: -40, z: -32 }, // L-Extensions
     { x: 80, z: 80 }, { x: -80, z: -80 }, { x: 80, z: -80 }, { x: -80, z: 80 }
 ];
 
 const SPAWN_POINTS = [
-    { x: 0, z: 0 }, { x: 20, z: 0 }, { x: -20, z: 0 }, { x: 0, z: 20 }, { x: 0, z: -20 },
-    { x: 85, z: 85 }, { x: -85, z: -85 }, { x: 85, z: -85 }, { x: -85, z: 85 },
-    { x: 50, z: 0 }, { x: -50, z: 0 }, { x: 0, z: 50 }, { x: 0, z: -50 }
+    { x: 0, z: 0 }, { x: 0, z: 30 }, { x: 0, z: -30 }, { x: 30, z: 0 }, { x: -30, z: 0 },
+    { x: 60, z: 60 }, { x: -60, z: -60 }, { x: 60, z: -60 }, { x: -60, z: 60 },
+    { x: 92, z: 0 }, { x: -92, z: 0 }, { x: 0, z: 92 }, { x: 0, z: -92 }
 ];
 
 const AMMO_LOCATIONS = [
@@ -46,10 +39,10 @@ const AMMO_LOCATIONS = [
     { id: 'ammo_sg_2', x: -25, z: -25, y: 1.5, type: 'shotgun' },
     { id: 'ammo_sg_3', x: 25, z: -25, type: 'shotgun' },
     { id: 'ammo_sg_4', x: -25, z: 25, y: 1.5, type: 'shotgun' },
-    { id: 'ammo_rg_1', x: 90, z: 0, y: 1.5, type: 'railgun' },
-    { id: 'ammo_rg_2', x: -90, z: 0, y: 1.5, type: 'railgun' },
-    { id: 'ammo_rg_3', x: 0, z: 90, type: 'railgun' },
-    { id: 'ammo_rg_4', x: 0, z: -90, type: 'railgun' }
+    { id: 'ammo_rg_1', x: 0, z: 55, y: 13.5, type: 'railgun' }, 
+    { id: 'ammo_rg_2', x: 0, z: -55, y: 13.5, type: 'railgun' },
+    { id: 'ammo_rg_3', x: 90, z: 0, y: 1.5, type: 'railgun' },
+    { id: 'ammo_rg_4', x: -90, z: 0, y: 1.5, type: 'railgun' }
 ];
 
 const HEALTH_LOCATIONS = [
@@ -63,21 +56,68 @@ const HEALTH_LOCATIONS = [
 AMMO_LOCATIONS.forEach(loc => { ammoPickups[loc.id] = { ...loc, active: true }; });
 HEALTH_LOCATIONS.forEach(loc => { healthPickups[loc.id] = { ...loc, active: true }; });
 
-// Spawn Logic
+// --- SERVER-SIDE PHYSICS HELPERS ---
+
 function getSafeSpawn() {
     let attempts = 0;
     while(attempts < 20) {
         const pick = SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
         const tx = pick.x + (Math.random() - 0.5) * 4; 
         const tz = pick.z + (Math.random() - 0.5) * 4;
-        
-        if (!checkBotWallCollision(tx, tz)) {
-            return { x: tx, z: tz };
-        }
+        if (!checkBotWallCollision(tx, tz)) return { x: tx, z: tz };
         attempts++;
     }
     return { x: 0, z: 0 };
 }
+
+function checkBotWallCollision(x, z) {
+    if (x > 95 || x < -95 || z > 95 || z < -95) return true;
+    for(let obs of MAP_OBSTACLES) {
+        if (Math.abs(x - obs.x) < 7 && Math.abs(z - obs.z) < 7) return true;
+    }
+    return false;
+}
+
+// NEW: Calculates Bot Y height based on location (Ramps/Catwalks)
+function getBotHeight(x, z) {
+    let y = 2; // Default ground height (center of bot body)
+
+    // 1. Catwalks (Height ~14 for bot y center)
+    // North: x[-70, 70], z[50, 60]
+    if (x > -70 && x < 70 && z > 50 && z < 60) return 14;
+    // South: x[-70, 70], z[-60, -50]
+    if (x > -70 && x < 70 && z < -50 && z > -60) return 14;
+    // East: x[50, 60], z[-50, 50]
+    if (x > 50 && x < 60 && z > -50 && z < 50) return 14;
+    // West: x[-60, -50], z[-50, 50]
+    if (x < -50 && x > -60 && z > -50 && z < 50) return 14;
+
+    // 2. Ramps (Linear Interpolation from 2 to 14)
+    // North Ramp: x[-4, 4], z[20, 50]. Goes up +Z.
+    if (x > -4 && x < 4 && z > 20 && z < 50) {
+        let p = (z - 20) / 30; // 0.0 to 1.0
+        return 2 + (p * 12);
+    }
+    // South Ramp: x[-4, 4], z[-50, -20]. Goes up -Z.
+    if (x > -4 && x < 4 && z < -20 && z > -50) {
+        let p = (-20 - z) / 30;
+        return 2 + (p * 12);
+    }
+    // East Ramp: z[-4, 4], x[20, 50]. Goes up +X.
+    if (z > -4 && z < 4 && x > 20 && x < 50) {
+        let p = (x - 20) / 30;
+        return 2 + (p * 12);
+    }
+    // West Ramp: z[-4, 4], x[-50, -20]. Goes up -X.
+    if (z > -4 && z < 4 && x < -20 && x > -50) {
+        let p = (-20 - x) / 30;
+        return 2 + (p * 12);
+    }
+
+    return y;
+}
+
+// --- SOCKET LOGIC ---
 
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
@@ -195,6 +235,12 @@ io.on('connection', (socket) => {
             io.emit('playerDisconnected', socket.id);
             io.emit('updatePlayerList', Object.keys(players).length);
         }
+        
+        // FIX: Reset bot count if server is empty
+        if (Object.keys(players).length === 0) {
+            botCount = 0;
+            gameActive = true; // Also reset game state
+        }
     });
 });
 
@@ -235,16 +281,7 @@ function endGame(winnerName) {
     }, 6000); 
 }
 
-function checkBotWallCollision(x, z) {
-    // Arena Boundaries
-    if (x > 95 || x < -95 || z > 95 || z < -95) return true;
-    for(let obs of MAP_OBSTACLES) {
-        // Wall size is 10 (half 5), bot radius approx 2. Safe distance 7.
-        if (Math.abs(x - obs.x) < 7 && Math.abs(z - obs.z) < 7) return true;
-    }
-    return false;
-}
-
+// --- BOT AI LOOP ---
 const BOT_WEAPONS = ['BLASTER', 'SHOTGUN', 'RAILGUN'];
 
 setInterval(() => {
@@ -254,6 +291,7 @@ setInterval(() => {
         if (players[botId].isBot) {
             const bot = players[botId];
             
+            // AI Logic
             let target = null;
             let minDist = 1000;
 
@@ -296,8 +334,13 @@ setInterval(() => {
                 }
             }
 
-            if(Math.random() < 0.005 && bot.y < 3) bot.y += 3;
-            if(bot.y > 2) bot.y -= 0.1;
+            // FIX: Apply Height Map to Bot
+            bot.y = getBotHeight(bot.x, bot.z);
+
+            // Gravity/Jump override (Only if not on catwalk/ramp)
+            if (bot.y <= 2.1) {
+                if(Math.random() < 0.005) bot.y += 3; // Random Jump
+            }
 
             if (target && minDist < 50) {
                 const now = Date.now();
