@@ -14,13 +14,13 @@ let ammoPickups = {};
 let healthPickups = {}; 
 const MAP_SEED = Math.random(); 
 
-// --- CONFIGURATION ---
 const MAX_PLAYERS = 16; 
 let fragLimit = 10; 
 let gameActive = true;
 let botCount = 0;
 
-// --- BOT NAMES LIST ---
+let currentMap = { walls: [], platforms: [], ramps: [], spawns: [], ammo: [], health: [] };
+
 const BOT_NAMES = [
     "Razor", "Blade", "Tank", "Viper", "Ghost", "Sarge", "Ranger", "Phobos", "Crash", "Doom", 
     "Slash", "Bones", "Orbb", "Hunter", "Klesk", "Anarki", "Bitterman", "Daemia", "Patriot", "Stripe", 
@@ -33,98 +33,134 @@ function getUniqueBotName() {
     return available.length > 0 ? available[Math.floor(Math.random() * available.length)] : `Unit-${Math.floor(Math.random() * 999)}`;
 }
 
-// --- MAP COLLISION DATA ---
-const MAP_OBSTACLES = [
-    { x: 15, z: 15 }, { x: -15, z: -15 }, { x: 15, z: -15 }, { x: -15, z: 15 },
-    { x: 40, z: 40 }, { x: 40, z: -40 }, { x: -40, z: 40 }, { x: -40, z: -40 },
-    { x: 40, z: 32 }, { x: 40, z: -32 }, { x: -40, z: 32 }, { x: -40, z: -32 }, 
-    { x: 80, z: 80 }, { x: -80, z: -80 }, { x: 80, z: -80 }, { x: -80, z: 80 }
-];
+// --- MAP GENERATION ---
+function generateMap() {
+    currentMap = { walls: [], platforms: [], ramps: [], spawns: [], ammo: [], health: [] };
+    ammoPickups = {};
+    healthPickups = {};
 
-const SPAWN_POINTS = [
-    { x: 0, z: 0 }, { x: 0, z: 30 }, { x: 0, z: -30 }, { x: 30, z: 0 }, { x: -30, z: 0 },
-    { x: 60, z: 60 }, { x: -60, z: -60 }, { x: 60, z: -60 }, { x: -60, z: 60 },
-    { x: 92, z: 0 }, { x: -92, z: 0 }, { x: 0, z: 92 }, { x: 0, z: -92 }
-];
+    // 1. CATWALK RING (Height 12)
+    currentMap.platforms.push({ x: -50, z: 70, w: 80, d: 20 });
+    currentMap.platforms.push({ x: 50, z: 70, w: 80, d: 20 });
+    currentMap.platforms.push({ x: 0, z: 70, w: 20, d: 20 }); // Pad
 
-const AMMO_LOCATIONS = [
-    { id: 'ammo_sg_1', x: 25, z: 25, y: 1.5, type: 'shotgun' },
-    { id: 'ammo_sg_2', x: -25, z: -25, y: 1.5, type: 'shotgun' },
-    { id: 'ammo_sg_3', x: 25, z: -25, type: 'shotgun' },
-    { id: 'ammo_sg_4', x: -25, z: 25, y: 1.5, type: 'shotgun' },
-    { id: 'ammo_rg_1', x: 0, z: 55, y: 13.5, type: 'railgun' }, 
-    { id: 'ammo_rg_2', x: 0, z: -55, y: 13.5, type: 'railgun' },
-    { id: 'ammo_rg_3', x: 90, z: 0, y: 1.5, type: 'railgun' },
-    { id: 'ammo_rg_4', x: -90, z: 0, y: 1.5, type: 'railgun' }
-];
+    currentMap.platforms.push({ x: -50, z: -70, w: 80, d: 20 });
+    currentMap.platforms.push({ x: 50, z: -70, w: 80, d: 20 });
+    currentMap.platforms.push({ x: 0, z: -70, w: 20, d: 20 }); // Pad
 
-const HEALTH_LOCATIONS = [
-    { id: 'hp_1', x: 0, z: 0, y: 1.5 },
-    { id: 'hp_2', x: 55, z: 0, y: 13.5 },
-    { id: 'hp_3', x: -55, z: 0, y: 13.5 },
-    { id: 'hp_4', x: 90, z: 90, y: 1.5 },
-    { id: 'hp_5', x: -90, z: -90, y: 1.5 }
-];
+    currentMap.platforms.push({ x: 70, z: -50, w: 20, d: 80 }); 
+    currentMap.platforms.push({ x: 70, z: 50, w: 20, d: 80 });
+    currentMap.platforms.push({ x: 70, z: 0, w: 20, d: 20 }); // Pad
 
-AMMO_LOCATIONS.forEach(loc => { ammoPickups[loc.id] = { ...loc, active: true }; });
-HEALTH_LOCATIONS.forEach(loc => { healthPickups[loc.id] = { ...loc, active: true }; });
+    currentMap.platforms.push({ x: -70, z: -50, w: 20, d: 80 });
+    currentMap.platforms.push({ x: -70, z: 50, w: 20, d: 80 });
+    currentMap.platforms.push({ x: -70, z: 0, w: 20, d: 20 }); // Pad
+
+    // 2. RAMPS
+    currentMap.ramps.push({ x: 0, z: 45, dir: 'North' });
+    currentMap.ramps.push({ x: 0, z: -45, dir: 'South' });
+    currentMap.ramps.push({ x: 45, z: 0, dir: 'East' });
+    currentMap.ramps.push({ x: -45, z: 0, dir: 'West' });
+
+    // 3. PILLARS
+    currentMap.walls.push({ x: 35, z: 35, w: 10, d: 10 });
+    currentMap.walls.push({ x: -35, z: 35, w: 10, d: 10 });
+    currentMap.walls.push({ x: 35, z: -35, w: 10, d: 10 });
+    currentMap.walls.push({ x: -35, z: -35, w: 10, d: 10 });
+
+    // 4. SPAWNS (Ensuring Center is valid)
+    currentMap.spawns = [
+        { x: 0, z: 0 }, 
+        { x: 85, z: 85 }, { x: -85, z: -85 }, { x: 85, z: -85 }, { x: -85, z: 85 }, 
+        { x: 0, z: 20 }, { x: 0, z: -20 }, { x: 20, z: 0 }, { x: -20, z: 0 }
+    ];
+
+    // 5. ITEMS
+    let aid=0, hid=0;
+    ammoPickups[`ammo_${aid++}`] = { id: `ammo_${aid}`, x: 70, z: 60, y: 13.5, type: 'railgun', active: true };
+    ammoPickups[`ammo_${aid++}`] = { id: `ammo_${aid}`, x: -70, z: -60, y: 13.5, type: 'railgun', active: true };
+    ammoPickups[`ammo_${aid++}`] = { id: `ammo_${aid}`, x: 20, z: 20, y: 1.5, type: 'shotgun', active: true };
+    ammoPickups[`ammo_${aid++}`] = { id: `ammo_${aid}`, x: -20, z: -20, y: 1.5, type: 'shotgun', active: true };
+
+    healthPickups[`hp_${hid++}`] = { id: `hp_${hid}`, x: 0, z: 0, y: 1.5, active: true };
+    healthPickups[`hp_${hid++}`] = { id: `hp_${hid}`, x: 70, z: -70, y: 13.5, active: true }; 
+    healthPickups[`hp_${hid++}`] = { id: `hp_${hid}`, x: -70, z: 70, y: 13.5, active: true };
+}
+
+generateMap();
 
 // --- PHYSICS HELPERS ---
 
+function isPosSafe(x, z) {
+    if (isNaN(x) || isNaN(z)) return false;
+    if (x > 90 || x < -90 || z > 90 || z < -90) return false;
+
+    // Walls
+    for (let w of currentMap.walls) {
+        const halfW = (w.w/2) + 4; 
+        const halfD = (w.d/2) + 4;
+        if (x > w.x - halfW && x < w.x + halfW && z > w.z - halfD && z < w.z + halfD) return false;
+    }
+    // Platforms (Don't spawn inside pillars)
+    for (let p of currentMap.platforms) {
+        const halfW = (p.w/2) + 2;
+        const halfD = (p.d/2) + 2;
+        if (x > p.x - halfW && x < p.x + halfW && z > p.z - halfD && z < p.z + halfD) return false;
+    }
+    // Ramps
+    for (let r of currentMap.ramps) {
+        if(Math.abs(x - r.x) < 8 && Math.abs(z - r.z) < 18) return false;
+    }
+    return true;
+}
+
 function getSafeSpawn() {
+    // Safety check if map generated incorrectly
+    if (!currentMap.spawns || currentMap.spawns.length === 0) return { x: 0, z: 0 };
+
     let attempts = 0;
-    while(attempts < 20) {
-        const pick = SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
-        const tx = pick.x + (Math.random() - 0.5) * 4; 
-        const tz = pick.z + (Math.random() - 0.5) * 4;
-        if (!checkBotWallCollision(tx, tz)) return { x: tx, z: tz };
+    while(attempts < 50) {
+        const pick = currentMap.spawns[Math.floor(Math.random() * currentMap.spawns.length)];
+        const tx = pick.x + (Math.random() - 0.5) * 5; 
+        const tz = pick.z + (Math.random() - 0.5) * 5;
+        if (isPosSafe(tx, tz)) return { x: tx, z: tz };
         attempts++;
     }
     return { x: 0, z: 0 };
 }
 
 function checkBotWallCollision(x, z) {
-    if (x > 95 || x < -95 || z > 95 || z < -95) return true;
-    for(let obs of MAP_OBSTACLES) {
-        if (Math.abs(x - obs.x) < 7 && Math.abs(z - obs.z) < 7) return true;
-    }
-    return false;
+    return !isPosSafe(x, z);
 }
 
-// FIX: Added currentY parameter to determine if bot is under or on top of catwalks
 function getBotHeight(x, z, currentY) {
-    // 1. Check Ramps First (They connect ground to air, assume always climbable)
-    
-    // North Ramp (+Z)
-    if (x > -4 && x < 4 && z > 20 && z < 50) return 2 + ((z - 20) / 30 * 12);
-    // South Ramp (-Z)
-    if (x > -4 && x < 4 && z < -20 && z > -50) return 2 + ((-20 - z) / 30 * 12);
-    // East Ramp (+X)
-    if (z > -4 && z < 4 && x > 20 && x < 50) return 2 + ((x - 20) / 30 * 12);
-    // West Ramp (-X)
-    if (z > -4 && z < 4 && x < -20 && x > -50) return 2 + ((-20 - x) / 30 * 12);
+    if (isNaN(x) || isNaN(z)) return 2;
 
-    // 2. Check Catwalks
-    // Check if X/Z is within the Catwalk areas
-    const onCatwalkXZ = (
-        (x > -70 && x < 70 && ((z > 50 && z < 60) || (z < -50 && z > -60))) || 
-        ((x > 50 && x < 60) || (x < -50 && x > -60)) && z > -50 && z < 50
-    );
-
-    if (onCatwalkXZ) {
-        // LOGIC FIX:
-        // If bot is already high (> 6), snap to catwalk height (14).
-        // If bot is low (<= 6), stay on ground (2).
-        if (currentY > 6) return 14; 
-        else return 2;
+    // 1. Ramps
+    for (let r of currentMap.ramps) {
+        let dx = x - r.x;
+        let dz = z - r.z;
+        if (r.dir === 'North' && Math.abs(dx) < 4 && dz > -15 && dz < 15) return 2 + ((dz + 15) / 30 * 12);
+        if (r.dir === 'South' && Math.abs(dx) < 4 && dz > -15 && dz < 15) return 2 + ((15 - dz) / 30 * 12);
+        if (r.dir === 'East' && Math.abs(dz) < 4 && dx > -15 && dx < 15) return 2 + ((dx + 15) / 30 * 12);
+        if (r.dir === 'West' && Math.abs(dz) < 4 && dx > -15 && dx < 15) return 2 + ((15 - dx) / 30 * 12);
     }
 
-    // 3. Default Ground
+    // 2. Catwalks
+    for (let p of currentMap.platforms) {
+        const halfW = p.w / 2;
+        const halfD = p.d / 2;
+        if (x > p.x - halfW && x < p.x + halfW && z > p.z - halfD && z < p.z + halfD) {
+            // FIX: Only snap to 14 if we are ALREADY high (e.g. at top of ramp ~12)
+            // If we are walking on ground (Y=2), do NOT snap up.
+            if (currentY > 10) return 14; 
+            else return 2;
+        }
+    }
     return 2;
 }
 
 // --- SOCKET LOGIC ---
-
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
     socket.emit('updatePlayerList', Object.keys(players).length);
@@ -134,28 +170,17 @@ io.on('connection', (socket) => {
         const botId = Object.keys(players).find(id => players[id].isBot);
 
         if (currentCount >= MAX_PLAYERS) {
-            if (botId) {
-                delete players[botId];
-                io.emit('playerDisconnected', botId);
-            } else {
-                socket.emit('serverMessage', 'SERVER FULL! Cannot join.');
-                return;
-            }
+            if (botId) { delete players[botId]; io.emit('playerDisconnected', botId); } 
+            else { socket.emit('serverMessage', 'SERVER FULL! Cannot join.'); return; }
         }
 
         const spawn = getSafeSpawn();
         const nickname = data.nickname || "Unknown";
-        
-        if (Object.keys(players).length === 0) {
-            if(data.fragLimit) fragLimit = parseInt(data.fragLimit);
-        }
+        if (Object.keys(players).length === 0) if(data.fragLimit) fragLimit = parseInt(data.fragLimit);
 
-        players[socket.id] = {
-            id: socket.id, x: spawn.x, y: 5, z: spawn.z, rotation: 0,
-            nickname: nickname, health: 100, isBot: false, score: 0
-        };
+        players[socket.id] = { id: socket.id, x: spawn.x, y: 5, z: spawn.z, rotation: 0, nickname: nickname, health: 100, isBot: false, score: 0 };
 
-        socket.emit('mapConfig', { seed: MAP_SEED });
+        socket.emit('mapConfig', currentMap);
         socket.emit('ammoState', ammoPickups);
         socket.emit('healthState', healthPickups);
         socket.emit('currentPlayers', players);
@@ -165,21 +190,11 @@ io.on('connection', (socket) => {
     });
 
     socket.on('addBot', () => {
-        if (Object.keys(players).length >= MAX_PLAYERS) {
-            socket.emit('serverMessage', 'Server Full: Cannot add Bot');
-            return;
-        }
-
+        if (Object.keys(players).length >= MAX_PLAYERS) return;
         const botId = 'bot_' + Math.random().toString(36).substr(2, 9);
         const spawn = getSafeSpawn();
-        const botName = getUniqueBotName(); 
-        
-        players[botId] = {
-            id: botId, x: spawn.x, y: 5, z: spawn.z, rotation: 0,
-            nickname: botName, health: 100, isBot: true, score: 0,
-            targetX: 0, targetZ: 0, lastShot: 0, weapon: 'BLASTER'
-        };
-
+        const botName = getUniqueBotName();
+        players[botId] = { id: botId, x: spawn.x, y: 5, z: spawn.z, rotation: 0, nickname: botName, health: 100, isBot: true, score: 0, targetX: 0, targetZ: 0, lastShot: 0, weapon: 'BLASTER' };
         io.emit('newPlayer', players[botId]);
         io.emit('updatePlayerList', Object.keys(players).length);
         io.emit('serverMessage', `${botName} has joined`);
@@ -242,10 +257,10 @@ io.on('connection', (socket) => {
             io.emit('playerDisconnected', socket.id);
             io.emit('updatePlayerList', Object.keys(players).length);
         }
-        
         if (Object.keys(players).length === 0) {
             botCount = 0;
             gameActive = true;
+            generateMap();
         }
     });
 });
@@ -255,20 +270,16 @@ function handleDamage(victimId, attacker, damage) {
     if (victim) {
         victim.health -= damage;
         io.emit('healthUpdate', { id: victimId, health: victim.health });
-        
         if (victim.health <= 0) {
             const spawn = getSafeSpawn();
             victim.health = 100; victim.x = spawn.x; victim.z = spawn.z; victim.y = 5; 
             io.emit('playerRespawn', victim);
-
             if (attacker && attacker.id !== victim.id) {
                 attacker.score++;
                 io.emit('scoreUpdate', { id: attacker.id, score: attacker.score });
                 io.emit('serverMessage', `${attacker.nickname} fragged ${victim.nickname}`);
                 if (attacker.score >= fragLimit) endGame(attacker.nickname);
-            } else {
-                io.emit('serverMessage', `${victim.nickname} died`);
-            }
+            } else { io.emit('serverMessage', `${victim.nickname} died`); }
         }
     }
 }
@@ -278,90 +289,74 @@ function endGame(winnerName) {
     io.emit('gameOver', winnerName);
     setTimeout(() => {
         gameActive = true;
+        players = {}; 
+        generateMap();
         for (let id in players) {
             players[id].score = 0; players[id].health = 100;
             const spawn = getSafeSpawn();
             players[id].x = spawn.x; players[id].z = spawn.z; players[id].y = 5;
         }
+        io.emit('mapConfig', currentMap);
         io.emit('gameReset', players);
     }, 6000); 
 }
 
 const BOT_WEAPONS = ['BLASTER', 'SHOTGUN', 'RAILGUN'];
-
 setInterval(() => {
     if (!gameActive) return;
-
     for (const botId in players) {
         if (players[botId].isBot) {
             const bot = players[botId];
             
-            let target = null;
-            let minDist = 1000;
-
+            // AI Logic
+            let target = null; let minDist = 1000;
             for (const pid in players) {
                 if (pid !== botId && players[pid].health > 0) {
                     const p = players[pid];
                     const d = Math.sqrt(Math.pow(p.x - bot.x, 2) + Math.pow(p.z - bot.z, 2));
-                    if (d < minDist) {
-                        minDist = d;
-                        target = p;
-                    }
+                    if (d < minDist) { minDist = d; target = p; }
                 }
             }
-
-            if(Math.random() < 0.01) {
-                bot.weapon = BOT_WEAPONS[Math.floor(Math.random() * BOT_WEAPONS.length)];
-            }
-
+            if(Math.random() < 0.01) bot.weapon = BOT_WEAPONS[Math.floor(Math.random() * BOT_WEAPONS.length)];
+            
             if (target && minDist < 60) {
-                const dx = target.x - bot.x;
-                const dz = target.z - bot.z;
+                const dx = target.x - bot.x; const dz = target.z - bot.z;
                 const angle = Math.atan2(dx, dz);
                 const nextX = bot.x + Math.sin(angle) * 0.15;
                 const nextZ = bot.z + Math.cos(angle) * 0.15;
-
-                if(!checkBotWallCollision(nextX, nextZ)) {
-                    bot.x = nextX; bot.z = nextZ;
-                }
+                if(!checkBotWallCollision(nextX, nextZ)) { bot.x = nextX; bot.z = nextZ; }
                 bot.rotation = angle;
             } else {
-                const dx = bot.targetX - bot.x;
-                const dz = bot.targetZ - bot.z;
+                const dx = bot.targetX - bot.x; const dz = bot.targetZ - bot.z;
                 const dist = Math.sqrt(dx*dx + dz*dz);
                 if (dist < 2 || checkBotWallCollision(bot.x + (dx/dist), bot.z + (dz/dist))) {
-                    bot.targetX = (Math.random() * 160) - 80;
-                    bot.targetZ = (Math.random() * 160) - 80;
+                    bot.targetX = (Math.random() * 160) - 80; bot.targetZ = (Math.random() * 160) - 80;
                 } else {
                     bot.x += (dx/dist) * 0.1; bot.z += (dz/dist) * 0.1;
                     bot.rotation = Math.atan2(dx, dz);
                 }
             }
-
-            // FIX: Pass current Y to height check to prevent teleporting when walking under catwalks
+            
             bot.y = getBotHeight(bot.x, bot.z, bot.y);
+            // Anti-NaN Check
+            if (isNaN(bot.y)) bot.y = 2;
+            if (isNaN(bot.x)) bot.x = 0;
+            if (isNaN(bot.z)) bot.z = 0;
 
-            // Gravity/Jump override (Only if on ground layer)
             if (bot.y <= 2.1 && Math.random() < 0.005) bot.y += 3;
 
             if (target && minDist < 50) {
                 const now = Date.now();
-                let cooldown = 1000;
-                let damage = 10;
+                let cooldown = 1000; let damage = 10;
                 if(bot.weapon === 'SHOTGUN') { cooldown = 1500; damage = 8; }
                 if(bot.weapon === 'RAILGUN') { cooldown = 2000; damage = 40; }
-
                 if (now - (bot.lastShot || 0) > cooldown) {
                     bot.lastShot = now;
                     io.emit('playerShot', { id: bot.id, weapon: {type: bot.weapon} });
-                    
                     let hitChance = 0.3;
                     if(bot.weapon === 'SHOTGUN') hitChance = 0.5;
                     if(bot.weapon === 'RAILGUN') hitChance = 0.2;
-
-                    if (Math.random() < hitChance) {
-                        handleDamage(target.id, bot, damage);
-                    }
+                    if (Math.random() < hitChance) handleDamage(target.id, bot, damage);
                 }
             }
             io.emit('playerMoved', bot);
