@@ -5,7 +5,7 @@ let objects = [];
 let groundObjects = []; 
 let ammoMeshes = {}; 
 let healthMeshes = {};
-let players = {}; 
+let players = {}; // Stores { mesh, info, animTime, lastPos }
 let myId;
 let myHealth = 100;
 let myScore = 0;
@@ -166,7 +166,12 @@ function init() {
 
     socket.on('currentPlayers', (serverPlayers) => { for (let id in serverPlayers) if (id !== socket.id) addOtherPlayer(serverPlayers[id]); });
     socket.on('newPlayer', (p) => addOtherPlayer(p));
-    socket.on('playerMoved', (p) => { if (players[p.id]) { players[p.id].mesh.position.set(p.x, p.y, p.z); players[p.id].mesh.rotation.y = p.rotation; } });
+    socket.on('playerMoved', (p) => { 
+        if (players[p.id]) { 
+            players[p.id].mesh.position.set(p.x, p.y, p.z); 
+            players[p.id].mesh.rotation.y = p.rotation; 
+        } 
+    });
     socket.on('playerDisconnected', (id) => { if (players[id]) { scene.remove(players[id].mesh); delete players[id]; } });
     socket.on('playerShot', (data) => {
         if(players[data.id]) {
@@ -193,61 +198,21 @@ function createFPSWeapons() {
     weaponGroup.position.set(0.4, -0.3, -0.6); 
     camera.add(weaponGroup); 
 
-    // 1. BLASTER
-    const blaster = new THREE.Group();
-    const bMain = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 0.4), new THREE.MeshStandardMaterial({ color: 0xffff00 }));
-    const bHandle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.2, 0.1), new THREE.MeshStandardMaterial({ color: 0x444444 }));
-    bHandle.position.set(0, -0.15, 0.1);
-    blaster.add(bMain); blaster.add(bHandle);
+    const blaster = new THREE.Group(); blaster.add(new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 0.4), new THREE.MeshStandardMaterial({ color: 0xffff00 })));
+    const bTip = new THREE.Object3D(); bTip.position.set(0, 0, -0.25); blaster.add(bTip); blaster.barrelTip = bTip;
     
-    const bTip = new THREE.Object3D(); 
-    bTip.position.set(0, 0, -0.25); 
-    blaster.add(bTip); 
-    blaster.barrelTip = bTip;
+    const shotgun = new THREE.Group(); shotgun.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.5), new THREE.MeshStandardMaterial({ color: 0x8B4513 })));
+    const sTip = new THREE.Object3D(); sTip.position.set(0, 0.05, -0.85); shotgun.add(sTip); shotgun.barrelTip = sTip;
     
-    // 2. SHOTGUN
-    const shotgun = new THREE.Group();
-    const sStock = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.5), new THREE.MeshStandardMaterial({ color: 0x8B4513 }));
-    const sBarrelL = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.8), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-    sBarrelL.rotation.x = -Math.PI/2; sBarrelL.position.set(-0.07, 0.05, -0.4);
-    const sBarrelR = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.8), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-    sBarrelR.rotation.x = -Math.PI/2; sBarrelR.position.set(0.07, 0.05, -0.4);
-    shotgun.add(sStock); shotgun.add(sBarrelL); shotgun.add(sBarrelR);
-    
-    const sTip = new THREE.Object3D(); 
-    sTip.position.set(0, 0.05, -0.85); 
-    shotgun.add(sTip); 
-    shotgun.barrelTip = sTip;
+    const railgun = new THREE.Group(); railgun.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 0.6), new THREE.MeshStandardMaterial({ color: 0x222222 })));
+    const rTip = new THREE.Object3D(); rTip.position.set(0, 0, -1.0); railgun.add(rTip); railgun.barrelTip = rTip;
 
-    // 3. RAILGUN
-    const railgun = new THREE.Group();
-    const rBody = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 0.6), new THREE.MeshStandardMaterial({ color: 0x222222 }));
-    const rRailT = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1.2), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff }));
-    rRailT.position.set(0, 0.18, -0.4);
-    const rRailB = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1.2), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff }));
-    rRailB.position.set(0, -0.18, -0.4);
-    railgun.add(rBody); railgun.add(rRailT); railgun.add(rRailB);
-    
-    const rTip = new THREE.Object3D(); 
-    rTip.position.set(0, 0, -1.0); 
-    railgun.add(rTip); 
-    railgun.barrelTip = rTip;
-
-    weaponGroup.add(blaster); 
-    weaponGroup.add(shotgun); 
-    weaponGroup.add(railgun);
-    
-    gunModels = [blaster, shotgun, railgun];
-    updateWeaponVisibility();
+    weaponGroup.add(blaster); weaponGroup.add(shotgun); weaponGroup.add(railgun);
+    gunModels = [blaster, shotgun, railgun]; updateWeaponVisibility();
 }
+function updateWeaponVisibility() { gunModels.forEach((m, i) => m.visible = (i === currentWeaponIdx)); }
 
-function updateWeaponVisibility() { 
-    gunModels.forEach((m, i) => m.visible = (i === currentWeaponIdx)); 
-}
-
-// --- MAP & RAMP GENERATION ---
 function createLevel() {
-    // FIX: Increased floor size to 220 to close the gap
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), MAT_FLOOR);
     MAT_FLOOR.map.repeat.set(22,22); floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; floor.name = "floor"; scene.add(floor);
     groundObjects.push(floor); 
@@ -260,59 +225,36 @@ function createLevel() {
     }
     
     addWall(15, 15); addWall(-15, -15); addWall(15, -15); addWall(-15, 15);
-    addWall(40, 40); addWall(40, 32); 
-    addWall(40, -40); addWall(40, -32);
-    addWall(-40, 40); addWall(-40, 32);
-    addWall(-40, -40); addWall(-40, -32);
+    addWall(40, 40); addWall(40, 32); addWall(40, -40); addWall(40, -32);
+    addWall(-40, 40); addWall(-40, 32); addWall(-40, -40); addWall(-40, -32);
     addWall(80, 80); addWall(-80, -80); addWall(80, -80); addWall(-80, 80);
     createBorderWalls();
 
-    createPlatform(0, 55, 140, 10, 12); 
-    createPlatform(0, -55, 140, 10, 12); 
-    createPlatform(55, 0, 10, 100, 12); 
-    createPlatform(-55, 0, 10, 100, 12); 
+    createPlatform(0, 55, 140, 10, 12); createPlatform(0, -55, 140, 10, 12); 
+    createPlatform(55, 0, 10, 100, 12); createPlatform(-55, 0, 10, 100, 12); 
 
-    createRamp(0, 37.5, 35, 12.5, 'North');
-    createRamp(0, -37.5, 35, 12.5, 'South');
-    createRamp(37.5, 0, 35, 12.5, 'East');
-    createRamp(-37.5, 0, 35, 12.5, 'West');
+    createRamp(0, 37.5, 35, 12.5, 'North'); createRamp(0, -37.5, 35, 12.5, 'South');
+    createRamp(37.5, 0, 35, 12.5, 'East'); createRamp(-37.5, 0, 35, 12.5, 'West');
 }
 
 function createPlatform(x, z, w, d, h) {
-    const geo = new THREE.BoxGeometry(w, 1, d); 
-    const m = new THREE.Mesh(geo, MAT_FLOOR);
+    const geo = new THREE.BoxGeometry(w, 1, d); const m = new THREE.Mesh(geo, MAT_FLOOR);
     m.position.set(x, h, z); m.receiveShadow = true; m.castShadow = true;
-    scene.add(m); groundObjects.push(m); 
-    m.geometry.computeBoundingBox(); m.BBox = new THREE.Box3().setFromObject(m);
+    scene.add(m); groundObjects.push(m); m.geometry.computeBoundingBox(); m.BBox = new THREE.Box3().setFromObject(m);
 }
 
 function createRamp(x, z, len, targetHeight, direction) {
-    const angle = Math.asin(targetHeight / len); 
-    const geo = new THREE.BoxGeometry(8, 1, len);
-    const m = new THREE.Mesh(geo, MAT_FLOOR);
-    
-    m.position.set(x, targetHeight/2, z); 
-    
-    if (direction === 'North') {
-        m.rotation.x = -angle; 
-    } else if (direction === 'South') {
-        m.rotation.x = angle; 
-    } else if (direction === 'East') {
-        m.geometry = new THREE.BoxGeometry(len, 1, 8); 
-        m.rotation.z = angle; 
-    } else if (direction === 'West') {
-        m.geometry = new THREE.BoxGeometry(len, 1, 8);
-        m.rotation.z = -angle; 
-    }
-
-    m.receiveShadow = true; m.castShadow = true;
-    scene.add(m); groundObjects.push(m);
+    const angle = Math.asin(targetHeight / len); const geo = new THREE.BoxGeometry(8, 1, len);
+    const m = new THREE.Mesh(geo, MAT_FLOOR); m.position.set(x, targetHeight/2, z); 
+    if (direction === 'North') m.rotation.x = -angle; if (direction === 'South') m.rotation.x = angle; 
+    if (direction === 'East') { m.geometry = new THREE.BoxGeometry(len, 1, 8); m.rotation.z = angle; } 
+    if (direction === 'West') { m.geometry = new THREE.BoxGeometry(len, 1, 8); m.rotation.z = -angle; }
+    m.receiveShadow = true; m.castShadow = true; scene.add(m); groundObjects.push(m);
 }
 
 function createBorderWalls() {
     const thickness = 10; const height = 40; const size = 200; const offset = size/2 + thickness/2; 
-    const wallGeoH = new THREE.BoxGeometry(size + (thickness*2), height, thickness); 
-    const wallGeoV = new THREE.BoxGeometry(thickness, height, size); 
+    const wallGeoH = new THREE.BoxGeometry(size + (thickness*2), height, thickness); const wallGeoV = new THREE.BoxGeometry(thickness, height, size); 
     const positions = [ { x: 0, z: -offset, geo: wallGeoH }, { x: 0, z: offset, geo: wallGeoH }, { x: -offset, z: 0, geo: wallGeoV }, { x: offset, z: 0, geo: wallGeoV } ];
     positions.forEach(p => { const m = new THREE.Mesh(p.geo, MAT_WALL); m.position.set(p.x, height/2, p.z); scene.add(m); objects.push(m); m.geometry.computeBoundingBox(); m.BBox = new THREE.Box3().setFromObject(m); });
 }
@@ -326,28 +268,73 @@ function createAmmoBox(data) {
 
 function createHealthBox(data) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(1.5,1.5,1.5), new THREE.MeshBasicMaterial({map: generateTexture('health')}));
-    m.position.set(data.x, data.y || 1.5, data.z); 
-    scene.add(m); healthMeshes[data.id] = m; m.userData = data;
+    m.position.set(data.x, data.y || 1.5, data.z); scene.add(m); healthMeshes[data.id] = m; m.userData = data;
 }
 
+// --- UPDATED HUMANOID MESH (Pivot Fix & Names) ---
 function createHumanoidMesh(isBot) {
-    const g = new THREE.Group(); const mat = new THREE.MeshLambertMaterial({color:isBot?0xff3333:0x33ff33});
+    const group = new THREE.Group();
+    const mat = new THREE.MeshLambertMaterial({color: isBot ? 0xff3333 : 0x33ff33});
+
+    // 1. Head
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), mat);
+    head.position.y = 1.4; 
+    group.add(head);
+
+    // 2. Body
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.5, 0.6), mat);
+    body.position.y = 0.25; 
+    group.add(body);
+
+    // 3. Arms (Pivot at top)
+    const armGeo = new THREE.BoxGeometry(0.4, 1.5, 0.4);
+    armGeo.translate(0, -0.6, 0); // Shift pivot to shoulder
     
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.8,0.8), mat);
-    head.position.y = 1.4;
-    g.add(head);
+    const armL = new THREE.Mesh(armGeo, mat);
+    armL.position.set(-0.9, 0.9, 0); // Shoulder position
+    armL.name = 'armL';
+    group.add(armL);
 
-    const body = new THREE.Mesh(new THREE.BoxGeometry(1.2,1.5,0.6), mat);
-    body.position.y = 0.25;
-    g.add(body);
+    const armR = new THREE.Mesh(armGeo, mat);
+    armR.position.set(0.9, 0.9, 0);
+    armR.name = 'armR';
+    group.add(armR);
 
-    const armG = new THREE.BoxGeometry(0.4, 1.5, 0.4); const lArm = new THREE.Mesh(armG, mat); lArm.position.set(-0.9, 0.25, 0); g.add(lArm); const rArm = new THREE.Mesh(armG, mat); rArm.position.set(0.9, 0.25, 0); g.add(rArm);
-    const legG = new THREE.BoxGeometry(0.5, 1.5, 0.5); const lLeg = new THREE.Mesh(legG, mat); lLeg.position.set(-0.35, -1.25, 0); g.add(lLeg); const rLeg = new THREE.Mesh(legG, mat); rLeg.position.set(0.35, -1.25, 0); g.add(rLeg);
-    const hb = new THREE.Mesh(new THREE.BoxGeometry(2,4,2), new THREE.MeshBasicMaterial({visible:false})); hb.position.y=1; g.add(hb);
-    g.traverse(o=>{if(o.isMesh)o.castShadow=true;});
-    return g;
+    // 4. Legs (Pivot at top)
+    const legGeo = new THREE.BoxGeometry(0.5, 1.5, 0.5);
+    legGeo.translate(0, -0.6, 0); // Shift pivot to hip
+
+    const legL = new THREE.Mesh(legGeo, mat);
+    legL.position.set(-0.35, -0.5, 0); // Hip position
+    legL.name = 'legL';
+    group.add(legL);
+
+    const legR = new THREE.Mesh(legGeo, mat);
+    legR.position.set(0.35, -0.5, 0);
+    legR.name = 'legR';
+    group.add(legR);
+
+    // Hitbox
+    const hitbox = new THREE.Mesh(new THREE.BoxGeometry(2, 4, 2), new THREE.MeshBasicMaterial({visible: false}));
+    hitbox.position.y = 1; 
+    group.add(hitbox);
+
+    group.traverse(o => { if(o.isMesh) o.castShadow = true; });
+    return group;
 }
-function addOtherPlayer(p) { const m = createHumanoidMesh(p.isBot); m.position.set(p.x,p.y,p.z); scene.add(m); players[p.id]={mesh:m, info:p}; }
+
+function addOtherPlayer(p) { 
+    const m = createHumanoidMesh(p.isBot); 
+    m.position.set(p.x, p.y, p.z); 
+    scene.add(m); 
+    // Init state for this player
+    players[p.id] = {
+        mesh: m, 
+        info: p,
+        animTime: 0,
+        lastPos: new THREE.Vector3(p.x, p.y, p.z)
+    }; 
+}
 
 function onShoot() {
     if (!controls.isLocked) return;
@@ -396,6 +383,39 @@ function onKeyDown(e) {
 
 function animate() {
     requestAnimationFrame(animate); const time = performance.now(); const delta = (time-prevTime)/1000; prevTime=time;
+    
+    // --- ANIMATE OTHER PLAYERS ---
+    for (let id in players) {
+        const p = players[id];
+        // Calculate speed
+        const dist = p.mesh.position.distanceTo(p.lastPos);
+        const speed = dist / delta; // units per second
+
+        // If moving faster than small jitter
+        if (speed > 0.5) {
+            p.animTime += delta * 10; // Speed of animation loop
+            
+            const legL = p.mesh.getObjectByName('legL');
+            const legR = p.mesh.getObjectByName('legR');
+            const armL = p.mesh.getObjectByName('armL');
+            const armR = p.mesh.getObjectByName('armR');
+
+            if (legL) legL.rotation.x = Math.sin(p.animTime) * 0.8;
+            if (legR) legR.rotation.x = Math.cos(p.animTime) * 0.8;
+            if (armL) armL.rotation.x = Math.cos(p.animTime) * 0.8; // Opposite to Left Leg
+            if (armR) armR.rotation.x = Math.sin(p.animTime) * 0.8;
+        } else {
+            // Reset to idle pose slowly or just snap
+            p.animTime = 0;
+            const legL = p.mesh.getObjectByName('legL'); if(legL) legL.rotation.x = 0;
+            const legR = p.mesh.getObjectByName('legR'); if(legR) legR.rotation.x = 0;
+            const armL = p.mesh.getObjectByName('armL'); if(armL) armL.rotation.x = 0;
+            const armR = p.mesh.getObjectByName('armR'); if(armR) armR.rotation.x = 0;
+        }
+        
+        p.lastPos.copy(p.mesh.position);
+    }
+
     const pPos = controls.getObject().position;
     for(let k in ammoMeshes) {
         if(ammoMeshes[k].visible) {
