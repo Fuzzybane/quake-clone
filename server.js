@@ -123,8 +123,9 @@ function getSafeSpawn() {
     return { x: 0, z: 0 };
 }
 
+// Wrapper for clarity in Bot Loop
 function checkBotWallCollision(x, z) {
-    return !isPosSafe(x, z);
+    return !isPosSafe(x, z); // If NOT safe, then Collision is TRUE
 }
 
 function getBotHeight(x, z, currentY) {
@@ -170,7 +171,7 @@ io.on('connection', (socket) => {
         players[socket.id] = { 
             id: socket.id, 
             x: spawn.x, 
-            y: 20, // FIX: Spawn High up to prevent floor clipping
+            y: 20, 
             z: spawn.z, 
             rotation: 0, 
             nickname: nickname, 
@@ -197,7 +198,7 @@ io.on('connection', (socket) => {
         players[botId] = { 
             id: botId, 
             x: spawn.x, 
-            y: 20, // FIX: Bot spawns high up too
+            y: 20, 
             z: spawn.z, 
             rotation: 0, 
             nickname: botName, 
@@ -208,7 +209,9 @@ io.on('connection', (socket) => {
             targetZ: 0, 
             lastShot: 0, 
             weapon: 'BLASTER', 
-            isDead: false
+            isDead: false,
+            lastPos: { x: spawn.x, z: spawn.z },
+            stuckTimer: 0
         };
         io.emit('newPlayer', players[botId]);
         io.emit('updatePlayerList', Object.keys(players).length);
@@ -306,7 +309,7 @@ function handleDamage(victimId, attacker, damage) {
                     victim.health = 100;
                     victim.x = spawn.x;
                     victim.z = spawn.z;
-                    victim.y = 20; // FIX: Respawn High
+                    victim.y = 20;
                     victim.isDead = false;
                     io.emit('playerRespawn', victim);
                 }
@@ -335,6 +338,23 @@ setInterval(() => {
         
         if (!bot.isBot || bot.isDead) continue;
 
+        // Unstuck Logic
+        if(bot.lastPos) {
+            const distMoved = Math.sqrt(Math.pow(bot.x - bot.lastPos.x, 2) + Math.pow(bot.z - bot.lastPos.z, 2));
+            if (distMoved < 0.05) { 
+                bot.stuckTimer = (bot.stuckTimer || 0) + 1;
+            } else {
+                bot.stuckTimer = 0;
+            }
+            if (bot.stuckTimer > 30) {
+                bot.y += 3;
+                bot.targetX = (Math.random() * 160) - 80;
+                bot.targetZ = (Math.random() * 160) - 80;
+                bot.stuckTimer = 0;
+            }
+        }
+        bot.lastPos = { x: bot.x, z: bot.z };
+
         let target = null; let minDist = 1000;
         for (const pid in players) {
             if (pid !== botId && players[pid].health > 0 && !players[pid].isDead) {
@@ -351,15 +371,19 @@ setInterval(() => {
             const angle = Math.atan2(dx, dz);
             const nextX = bot.x + Math.sin(angle) * 0.15;
             const nextZ = bot.z + Math.cos(angle) * 0.15;
+            
+            // Replaced !isPosSafe with checkBotWallCollision for consistent naming (wrapper is defined below)
             if(!checkBotWallCollision(nextX, nextZ)) { bot.x = nextX; bot.z = nextZ; }
             bot.rotation = angle;
         } else {
             const dx = bot.targetX - bot.x; const dz = bot.targetZ - bot.z;
             const dist = Math.sqrt(dx*dx + dz*dz);
-            if (dist < 2 || !isPosSafe(bot.x + (dx/dist), bot.z + (dz/dist))) {
+            if (dist < 2 || isNaN(dist) || checkBotWallCollision(bot.x + (dx/dist), bot.z + (dz/dist))) {
                 bot.targetX = (Math.random() * 160) - 80; bot.targetZ = (Math.random() * 160) - 80;
             } else {
-                bot.x += (dx/dist) * 0.1; bot.z += (dz/dist) * 0.1;
+                if(dist > 0) {
+                    bot.x += (dx/dist) * 0.1; bot.z += (dz/dist) * 0.1;
+                }
                 bot.rotation = Math.atan2(dx, dz);
             }
         }
