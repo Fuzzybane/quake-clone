@@ -18,13 +18,37 @@ const MAP_SEED = Math.random();
 const MAX_PLAYERS = 16; 
 let fragLimit = 10; 
 let gameActive = true;
-let botCount = 0; // Tracks bot names
 
-// --- MAP DATA ---
+// --- BOT NAMES LIST ---
+const BOT_NAMES = [
+    "Razor", "Blade", "Tank", "Viper", "Ghost", 
+    "Sarge", "Ranger", "Phobos", "Crash", "Doom", 
+    "Slash", "Bones", "Orbb", "Hunter", "Klesk", 
+    "Anarki", "Bitterman", "Daemia", "Patriot", "Stripe", 
+    "Visor", "Xaero", "Uriel", "Keel", "Sorlag",
+    "Reaper", "Glitch", "Zero", "Vortex", "Titan"
+];
+
+function getUniqueBotName() {
+    // Get list of current names
+    const takenNames = Object.values(players).map(p => p.nickname);
+    // Find names that aren't taken
+    const available = BOT_NAMES.filter(name => !takenNames.includes(name));
+    
+    if (available.length > 0) {
+        // Pick a random available name
+        return available[Math.floor(Math.random() * available.length)];
+    } else {
+        // Fallback if we run out of cool names
+        return `Unit-${Math.floor(Math.random() * 999)}`;
+    }
+}
+
+// --- MAP COLLISION DATA ---
 const MAP_OBSTACLES = [
     { x: 15, z: 15 }, { x: -15, z: -15 }, { x: 15, z: -15 }, { x: -15, z: 15 },
     { x: 40, z: 40 }, { x: 40, z: -40 }, { x: -40, z: 40 }, { x: -40, z: -40 },
-    { x: 40, z: 32 }, { x: 40, z: -32 }, { x: -40, z: 32 }, { x: -40, z: -32 }, // L-Extensions
+    { x: 40, z: 32 }, { x: 40, z: -32 }, { x: -40, z: 32 }, { x: -40, z: -32 }, 
     { x: 80, z: 80 }, { x: -80, z: -80 }, { x: 80, z: -80 }, { x: -80, z: 80 }
 ];
 
@@ -56,7 +80,7 @@ const HEALTH_LOCATIONS = [
 AMMO_LOCATIONS.forEach(loc => { ammoPickups[loc.id] = { ...loc, active: true }; });
 HEALTH_LOCATIONS.forEach(loc => { healthPickups[loc.id] = { ...loc, active: true }; });
 
-// --- SERVER-SIDE PHYSICS HELPERS ---
+// --- PHYSICS HELPERS ---
 
 function getSafeSpawn() {
     let attempts = 0;
@@ -78,41 +102,17 @@ function checkBotWallCollision(x, z) {
     return false;
 }
 
-// NEW: Calculates Bot Y height based on location (Ramps/Catwalks)
 function getBotHeight(x, z) {
-    let y = 2; // Default ground height (center of bot body)
+    let y = 2; 
+    // Catwalks
+    if ((x > -70 && x < 70 && ((z > 50 && z < 60) || (z < -50 && z > -60))) || 
+        ((x > 50 && x < 60) || (x < -50 && x > -60)) && z > -50 && z < 50) return 14;
 
-    // 1. Catwalks (Height ~14 for bot y center)
-    // North: x[-70, 70], z[50, 60]
-    if (x > -70 && x < 70 && z > 50 && z < 60) return 14;
-    // South: x[-70, 70], z[-60, -50]
-    if (x > -70 && x < 70 && z < -50 && z > -60) return 14;
-    // East: x[50, 60], z[-50, 50]
-    if (x > 50 && x < 60 && z > -50 && z < 50) return 14;
-    // West: x[-60, -50], z[-50, 50]
-    if (x < -50 && x > -60 && z > -50 && z < 50) return 14;
-
-    // 2. Ramps (Linear Interpolation from 2 to 14)
-    // North Ramp: x[-4, 4], z[20, 50]. Goes up +Z.
-    if (x > -4 && x < 4 && z > 20 && z < 50) {
-        let p = (z - 20) / 30; // 0.0 to 1.0
-        return 2 + (p * 12);
-    }
-    // South Ramp: x[-4, 4], z[-50, -20]. Goes up -Z.
-    if (x > -4 && x < 4 && z < -20 && z > -50) {
-        let p = (-20 - z) / 30;
-        return 2 + (p * 12);
-    }
-    // East Ramp: z[-4, 4], x[20, 50]. Goes up +X.
-    if (z > -4 && z < 4 && x > 20 && x < 50) {
-        let p = (x - 20) / 30;
-        return 2 + (p * 12);
-    }
-    // West Ramp: z[-4, 4], x[-50, -20]. Goes up -X.
-    if (z > -4 && z < 4 && x < -20 && x > -50) {
-        let p = (-20 - x) / 30;
-        return 2 + (p * 12);
-    }
+    // Ramps
+    if (x > -4 && x < 4 && z > 20 && z < 50) return 2 + ((z - 20) / 30 * 12);
+    if (x > -4 && x < 4 && z < -20 && z > -50) return 2 + ((-20 - z) / 30 * 12);
+    if (z > -4 && z < 4 && x > 20 && x < 50) return 2 + ((x - 20) / 30 * 12);
+    if (z > -4 && z < 4 && x < -20 && x > -50) return 2 + ((-20 - x) / 30 * 12);
 
     return y;
 }
@@ -127,6 +127,7 @@ io.on('connection', (socket) => {
         const currentCount = Object.keys(players).length;
         const botId = Object.keys(players).find(id => players[id].isBot);
 
+        // Server Cap & Bot Replacement Logic
         if (currentCount >= MAX_PLAYERS) {
             if (botId) {
                 delete players[botId];
@@ -166,16 +167,17 @@ io.on('connection', (socket) => {
 
         const botId = 'bot_' + Math.random().toString(36).substr(2, 9);
         const spawn = getSafeSpawn();
+        const botName = getUniqueBotName(); // NEW: Get random unique name
         
         players[botId] = {
             id: botId, x: spawn.x, y: 5, z: spawn.z, rotation: 0,
-            nickname: `Bot_${++botCount}`, health: 100, isBot: true, score: 0,
+            nickname: botName, health: 100, isBot: true, score: 0,
             targetX: 0, targetZ: 0, lastShot: 0, weapon: 'BLASTER'
         };
 
         io.emit('newPlayer', players[botId]);
         io.emit('updatePlayerList', Object.keys(players).length);
-        io.emit('serverMessage', `${players[botId].nickname} has been added`);
+        io.emit('serverMessage', `${botName} has joined`);
     });
 
     socket.on('removeBot', () => {
@@ -236,10 +238,8 @@ io.on('connection', (socket) => {
             io.emit('updatePlayerList', Object.keys(players).length);
         }
         
-        // FIX: Reset bot count if server is empty
         if (Object.keys(players).length === 0) {
-            botCount = 0;
-            gameActive = true; // Also reset game state
+            gameActive = true;
         }
     });
 });
@@ -281,7 +281,6 @@ function endGame(winnerName) {
     }, 6000); 
 }
 
-// --- BOT AI LOOP ---
 const BOT_WEAPONS = ['BLASTER', 'SHOTGUN', 'RAILGUN'];
 
 setInterval(() => {
@@ -291,7 +290,6 @@ setInterval(() => {
         if (players[botId].isBot) {
             const bot = players[botId];
             
-            // AI Logic
             let target = null;
             let minDist = 1000;
 
@@ -334,13 +332,8 @@ setInterval(() => {
                 }
             }
 
-            // FIX: Apply Height Map to Bot
             bot.y = getBotHeight(bot.x, bot.z);
-
-            // Gravity/Jump override (Only if not on catwalk/ramp)
-            if (bot.y <= 2.1) {
-                if(Math.random() < 0.005) bot.y += 3; // Random Jump
-            }
+            if (bot.y <= 2.1 && Math.random() < 0.005) bot.y += 3;
 
             if (target && minDist < 50) {
                 const now = Date.now();
