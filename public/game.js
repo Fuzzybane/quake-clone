@@ -65,7 +65,6 @@ const MAT_WALL = new THREE.MeshStandardMaterial({ map: generateTexture('wall'), 
 
 
 // --- 1. SETUP SOCKET LISTENERS ---
-
 socket.on('connect', () => { console.log("Connected to server"); });
 
 socket.on('mapConfig', (mapData) => { 
@@ -78,59 +77,37 @@ socket.on('mapConfig', (mapData) => {
     }
 });
 
-socket.on('updatePlayerList', (count) => { 
-    const el = document.getElementById('player-count'); 
-    if(el) el.innerText = count; 
-});
-
+socket.on('updatePlayerList', (count) => { const el = document.getElementById('player-count'); if(el) el.innerText = count; });
 socket.on('serverMessage', (msg) => {
     let container = document.getElementById('messages-container');
     if(!container) return;
-    const div = document.createElement('div'); 
-    div.className = 'msg-entry'; 
-    div.innerText = msg; 
-    container.appendChild(div);
+    const div = document.createElement('div'); div.className = 'msg-entry'; div.innerText = msg; container.appendChild(div);
     setTimeout(() => div.remove(), 5000);
 });
 
 socket.on('chatMessage', (data) => {
-    const history = document.getElementById('chat-history'); 
-    if(!history) return;
-    const div = document.createElement('div'); 
-    div.className = 'chat-msg-item'; 
-    div.innerText = `${data.name}: ${data.text}`;
-    history.appendChild(div); 
-    history.scrollTop = history.scrollHeight;
+    const history = document.getElementById('chat-history'); if(!history) return;
+    const div = document.createElement('div'); div.className = 'chat-msg-item'; div.innerText = `${data.name}: ${data.text}`;
+    history.appendChild(div); history.scrollTop = history.scrollHeight;
     if(history.children.length > 10) history.removeChild(history.children[0]);
 });
 
 socket.on('scoreUpdate', (data) => { if (data.id === socket.id) { myScore = data.score; document.getElementById('score-display').innerText = myScore; } });
 
 socket.on('gameOver', (winnerName) => {
-    gameActive = false; 
-    document.exitPointerLock();
-    const overlay = document.getElementById('game-over-overlay'); 
-    overlay.style.display = 'flex';
+    gameActive = false; document.exitPointerLock();
+    const overlay = document.getElementById('game-over-overlay'); overlay.style.display = 'flex';
     document.getElementById('winner-text').innerText = `${winnerName} WINS!`;
     let countdown = 6;
-    const interval = setInterval(() => { 
-        countdown--; 
-        if(countdown > 0) document.getElementById('restart-timer').innerText = `Returning to lobby in ${countdown}...`; 
-        else clearInterval(interval); 
-    }, 1000);
+    const interval = setInterval(() => { countdown--; if(countdown > 0) document.getElementById('restart-timer').innerText = `Returning to lobby in ${countdown}...`; else clearInterval(interval); }, 1000);
 });
 
 socket.on('gameReset', (allPlayersData) => {
-    document.getElementById('game-over-overlay').style.display = 'none'; 
-    document.getElementById('menu-overlay').style.display = 'flex';
-    document.getElementById('hud').style.display = 'none'; 
-    document.getElementById('crosshair').style.display = 'none';
-    document.getElementById('chat-input').style.display = 'none'; 
-    isChatting = false;
-    myScore = 0; 
-    document.getElementById('score-display').innerText = 0;
-    ammoStore = [999, WEAPONS[1].startAmmo, WEAPONS[2].startAmmo]; 
-    updateHUD();
+    document.getElementById('game-over-overlay').style.display = 'none'; document.getElementById('menu-overlay').style.display = 'flex';
+    document.getElementById('hud').style.display = 'none'; document.getElementById('crosshair').style.display = 'none';
+    document.getElementById('chat-input').style.display = 'none'; isChatting = false;
+    myScore = 0; document.getElementById('score-display').innerText = 0;
+    ammoStore = [999, WEAPONS[1].startAmmo, WEAPONS[2].startAmmo]; updateHUD();
     
     if(allPlayersData[socket.id]) { 
         const p = allPlayersData[socket.id]; 
@@ -146,7 +123,7 @@ socket.on('playerMoved', (p) => {
     if (players[p.id]) { 
         players[p.id].mesh.position.set(p.x, p.y, p.z); 
         players[p.id].mesh.rotation.y = p.rotation; 
-        players[p.id].lastMoveTime = Date.now();
+        players[p.id].lastMoveTime = Date.now(); // Critical for animation
     } 
 });
 socket.on('playerDisconnected', (id) => { if (players[id]) { scene.remove(players[id].mesh); delete players[id]; } });
@@ -159,34 +136,14 @@ socket.on('playerShot', (data) => {
     }
 });
 socket.on('healthUpdate', (data) => { if(data.id === socket.id) { myHealth = data.health; updateHUD(); document.body.style.boxShadow = "inset 0 0 50px red"; setTimeout(() => document.body.style.boxShadow = "none", 100); } });
-
-// NEW: Handle Death
 socket.on('playerDied', (id) => {
-    if (id === socket.id) {
-        // Local Player Died
-        document.getElementById('winner-text').innerText = "RESPAWNING...";
-        document.getElementById('restart-timer').innerText = "";
-        document.getElementById('game-over-overlay').style.display = 'flex';
-    } else if (players[id]) {
-        // Remote Player/Bot Died
-        players[id].mesh.visible = false;
-    }
+    if (id === socket.id) { document.getElementById('winner-text').innerText = "RESPAWNING..."; document.getElementById('restart-timer').innerText = ""; document.getElementById('game-over-overlay').style.display = 'flex'; }
+    else if (players[id]) { players[id].mesh.visible = false; }
 });
-
-// NEW: Handle Respawn (Restore visibility)
 socket.on('playerRespawn', (data) => { 
-    if (data.id === socket.id) { 
-        controls.getObject().position.set(data.x, data.y, data.z); 
-        velocity.set(0,0,0); 
-        myHealth = 100; 
-        updateHUD(); 
-        document.getElementById('game-over-overlay').style.display = 'none';
-    } else if (players[data.id]) {
-        players[data.id].mesh.position.set(data.x, data.y, data.z);
-        players[data.id].mesh.visible = true; // Show mesh again
-    } 
+    if (data.id === socket.id) { controls.getObject().position.set(data.x, data.y, data.z); velocity.set(0,0,0); myHealth = 100; updateHUD(); document.getElementById('game-over-overlay').style.display = 'none'; }
+    else if (players[data.id]) { players[data.id].mesh.position.set(data.x, data.y, data.z); players[data.id].mesh.visible = true; } 
 });
-
 socket.on('ammoState', (serverAmmo) => { for(let id in serverAmmo) { createAmmoBox(serverAmmo[id]); if(!serverAmmo[id].active) ammoMeshes[id].visible = false; } });
 socket.on('ammoTaken', (id) => { if(ammoMeshes[id]) ammoMeshes[id].visible = false; });
 socket.on('ammoRespawn', (id) => { if(ammoMeshes[id]) ammoMeshes[id].visible = true; });
@@ -196,46 +153,23 @@ socket.on('healthRespawn', (id) => { if(healthMeshes[id]) healthMeshes[id].visib
 
 
 // --- 2. AUDIO FUNCTIONS ---
-function initAudio() { 
-    if(!audioCtx) { 
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
-        startAmbience(); 
-    } 
-    if(audioCtx.state === 'suspended') audioCtx.resume(); 
-}
-
+function initAudio() { if(!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); startAmbience(); } if(audioCtx.state === 'suspended') audioCtx.resume(); }
 function playSound(type) {
-    if(!audioCtx) return; 
-    const t = audioCtx.currentTime;
-    
+    if(!audioCtx) return; const t = audioCtx.currentTime;
     if(type === 'BLASTER') {
-        const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
-        o.type = 'sawtooth'; o.frequency.setValueAtTime(880, t); o.frequency.exponentialRampToValueAtTime(110, t+0.2);
-        g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.01, t+0.2); 
-        o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(t+0.2);
+        const o = audioCtx.createOscillator(); const g = audioCtx.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(880, t); o.frequency.exponentialRampToValueAtTime(110, t+0.2);
+        g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.01, t+0.2); o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(t+0.2);
     } else if(type === 'SHOTGUN') {
-        const b = audioCtx.createBuffer(1, audioCtx.sampleRate*0.5, audioCtx.sampleRate);
-        const d = b.getChannelData(0); for(let i=0; i<d.length; i++) d[i]=Math.random()*2-1;
-        const s = audioCtx.createBufferSource(); s.buffer = b; const g = audioCtx.createGain(); const f = audioCtx.createBiquadFilter();
-        f.type = 'lowpass'; f.frequency.value = 1000; g.gain.setValueAtTime(1.0, t); g.gain.exponentialRampToValueAtTime(0.01, t+0.3);
-        s.connect(f); f.connect(g); g.connect(audioCtx.destination); s.start();
+        const b = audioCtx.createBuffer(1, audioCtx.sampleRate*0.5, audioCtx.sampleRate); const d = b.getChannelData(0); for(let i=0; i<d.length; i++) d[i]=Math.random()*2-1;
+        const s = audioCtx.createBufferSource(); s.buffer = b; const g = audioCtx.createGain(); const f = audioCtx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1000; g.gain.setValueAtTime(1.0, t); g.gain.exponentialRampToValueAtTime(0.01, t+0.3); s.connect(f); f.connect(g); g.connect(audioCtx.destination); s.start();
     } else if(type === 'RAILGUN') {
-        const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
-        o.type = 'square'; o.frequency.setValueAtTime(200, t); o.frequency.linearRampToValueAtTime(800, t+0.1); o.frequency.exponentialRampToValueAtTime(50, t+0.5);
-        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.5, t+0.1); g.gain.exponentialRampToValueAtTime(0.01, t+0.5);
-        o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(t+0.6);
+        const o = audioCtx.createOscillator(); const g = audioCtx.createGain(); o.type = 'square'; o.frequency.setValueAtTime(200, t); o.frequency.linearRampToValueAtTime(800, t+0.1); o.frequency.exponentialRampToValueAtTime(50, t+0.5);
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.5, t+0.1); g.gain.exponentialRampToValueAtTime(0.01, t+0.5); o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(t+0.6);
     }
 }
-
-function startAmbience() {
-    const o1=audioCtx.createOscillator(); const o2=audioCtx.createOscillator(); const g=audioCtx.createGain();
-    o1.type='triangle'; o1.frequency.value=50; o2.type='sine'; o2.frequency.value=55; g.gain.value=0.15;
-    o1.connect(g); o2.connect(g); g.connect(audioCtx.destination); o1.start(); o2.start();
-}
-
+function startAmbience() { const o1=audioCtx.createOscillator(); const o2=audioCtx.createOscillator(); const g=audioCtx.createGain(); o1.type='triangle'; o1.frequency.value=50; o2.type='sine'; o2.frequency.value=55; g.gain.value=0.15; o1.connect(g); o2.connect(g); g.connect(audioCtx.destination); o1.start(); o2.start(); }
 
 // --- 3. UI BUTTON LISTENERS ---
-
 const joinBtn = document.getElementById('join-btn');
 const addBotBtn = document.getElementById('add-bot-btn');
 const removeBotBtn = document.getElementById('remove-bot-btn');
@@ -244,28 +178,16 @@ if(joinBtn) {
     joinBtn.addEventListener('click', () => {
         const nickname = document.getElementById('nickname').value || "Player";
         const fragLimit = document.getElementById('frag-limit').value || 10;
-        
-        document.getElementById('menu-overlay').style.display = 'none'; 
-        document.getElementById('hud').style.display = 'flex'; 
-        document.getElementById('crosshair').style.display = 'block';
-        
+        document.getElementById('menu-overlay').style.display = 'none'; document.getElementById('hud').style.display = 'flex'; document.getElementById('crosshair').style.display = 'block';
         if(!scene) init(); 
-        initAudio(); 
-        gameActive = true; 
-        
-        if(cachedMapData && !mapLoaded) {
-            createLevel(cachedMapData);
-            mapLoaded = true;
-        }
-
+        initAudio(); gameActive = true; 
+        if(cachedMapData && !mapLoaded) { createLevel(cachedMapData); mapLoaded = true; }
         animate(); 
         socket.emit('joinGame', { nickname: nickname, fragLimit: fragLimit });
     });
 }
-
 if(addBotBtn) addBotBtn.addEventListener('click', () => { socket.emit('addBot'); });
 if(removeBotBtn) removeBotBtn.addEventListener('click', () => { socket.emit('removeBot'); });
-
 
 // --- 4. CORE GAME FUNCTIONS ---
 
@@ -280,9 +202,9 @@ function init() {
     dir.shadow.camera.left = -100; dir.shadow.camera.right = 100; dir.shadow.camera.top = 100; dir.shadow.camera.bottom = -100;
     scene.add(dir);
 
+    // Initial Safe Floor
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), MAT_FLOOR);
-    MAT_FLOOR.map.repeat.set(22,22); floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; floor.name = "floor"; 
-    scene.add(floor);
+    MAT_FLOOR.map.repeat.set(22,22); floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; floor.name = "floor"; scene.add(floor);
     groundObjects.push(floor);
 
     controls = new THREE.PointerLockControls(camera, document.body);
@@ -304,14 +226,30 @@ function init() {
     document.addEventListener('mousedown', onShoot);
 }
 
+// --- DETAILED WEAPON MODELS RESTORED ---
 function createFPSWeapons() {
     weaponGroup = new THREE.Group(); weaponGroup.position.set(0.4, -0.3, -0.6); camera.add(weaponGroup); 
-    const blaster = new THREE.Group(); blaster.add(new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 0.4), new THREE.MeshStandardMaterial({ color: 0xffff00 })));
+    
+    // 1. BLASTER
+    const blaster = new THREE.Group();
+    blaster.add(new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 0.4), new THREE.MeshStandardMaterial({ color: 0xffff00 })));
+    const bHandle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.2, 0.1), new THREE.MeshStandardMaterial({ color: 0x444444 })); bHandle.position.set(0, -0.15, 0.1); blaster.add(bHandle);
     const bTip = new THREE.Object3D(); bTip.position.set(0, 0, -0.25); blaster.add(bTip); blaster.barrelTip = bTip;
-    const shotgun = new THREE.Group(); shotgun.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.5), new THREE.MeshStandardMaterial({ color: 0x8B4513 })));
+    
+    // 2. SHOTGUN
+    const shotgun = new THREE.Group();
+    shotgun.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.5), new THREE.MeshStandardMaterial({ color: 0x8B4513 })));
+    const sBarrelL = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.8), new THREE.MeshStandardMaterial({ color: 0x333333 })); sBarrelL.rotation.x = -Math.PI/2; sBarrelL.position.set(-0.07, 0.05, -0.4); shotgun.add(sBarrelL);
+    const sBarrelR = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.8), new THREE.MeshStandardMaterial({ color: 0x333333 })); sBarrelR.rotation.x = -Math.PI/2; sBarrelR.position.set(0.07, 0.05, -0.4); shotgun.add(sBarrelR);
     const sTip = new THREE.Object3D(); sTip.position.set(0, 0.05, -0.85); shotgun.add(sTip); shotgun.barrelTip = sTip;
-    const railgun = new THREE.Group(); railgun.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 0.6), new THREE.MeshStandardMaterial({ color: 0x222222 })));
+
+    // 3. RAILGUN
+    const railgun = new THREE.Group();
+    railgun.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 0.6), new THREE.MeshStandardMaterial({ color: 0x222222 })));
+    const rRailT = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1.2), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff })); rRailT.position.set(0, 0.18, -0.4); railgun.add(rRailT);
+    const rRailB = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1.2), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff })); rRailB.position.set(0, -0.18, -0.4); railgun.add(rRailB);
     const rTip = new THREE.Object3D(); rTip.position.set(0, 0, -1.0); railgun.add(rTip); railgun.barrelTip = rTip;
+
     weaponGroup.add(blaster); weaponGroup.add(shotgun); weaponGroup.add(railgun);
     gunModels = [blaster, shotgun, railgun]; updateWeaponVisibility();
 }
@@ -320,7 +258,6 @@ function updateWeaponVisibility() { gunModels.forEach((m, i) => m.visible = (i =
 // --- LEVEL CREATION ---
 function createLevel(mapData) {
     if(!mapData) return;
-    
     objects.forEach(o => scene.remove(o)); objects = [];
     groundObjects.forEach(o => scene.remove(o)); groundObjects = [];
     
@@ -391,7 +328,7 @@ function createHumanoidMesh(isBot) {
     g.traverse(o=>{if(o.isMesh)o.castShadow=true;});
     return g;
 }
-function addOtherPlayer(p) { const m = createHumanoidMesh(p.isBot); m.position.set(p.x,p.y,p.z); scene.add(m); players[p.id]={mesh:m, info:p, animTime:0, lastMoveTime:0, lastPos:new THREE.Vector3(p.x,p.y,p.z) }; }
+function addOtherPlayer(p) { const m = createHumanoidMesh(p.isBot); m.position.set(p.x,p.y,p.z); scene.add(m); players[p.id]={mesh:m, info:p, animTime:0, lastMoveTime:0 }; }
 
 function onShoot() {
     if (!controls.isLocked) return;
@@ -431,26 +368,23 @@ function onKeyDown(e) {
 function animate() {
     requestAnimationFrame(animate); const time = performance.now(); const delta = Math.min((time-prevTime)/1000, 0.1); prevTime=time;
     
+    // ANIMATION FIX
     for(let id in players) {
         const p = players[id];
-        // Fix: Check if lastPos exists before distanceTo
-        if (p.lastPos && p.mesh) {
-            const dist = p.mesh.position.distanceTo(p.lastPos);
-            const speed = dist / delta;
-            if(speed > 0.5) {
-                p.animTime += delta * 10;
-                const legL = p.mesh.getObjectByName('legL'); if(legL) legL.rotation.x = Math.sin(p.animTime)*0.8;
-                const legR = p.mesh.getObjectByName('legR'); if(legR) legR.rotation.x = Math.cos(p.animTime)*0.8;
-                const armL = p.mesh.getObjectByName('armL'); if(armL) armL.rotation.x = Math.cos(p.animTime)*0.8;
-                const armR = p.mesh.getObjectByName('armR'); if(armR) armR.rotation.x = Math.sin(p.animTime)*0.8;
-            } else {
-                p.animTime = 0;
-                const legL = p.mesh.getObjectByName('legL'); if(legL) legL.rotation.x = 0;
-                const legR = p.mesh.getObjectByName('legR'); if(legR) legR.rotation.x = 0;
-                const armL = p.mesh.getObjectByName('armL'); if(armL) armL.rotation.x = 0;
-                const armR = p.mesh.getObjectByName('armR'); if(armR) armR.rotation.x = 0;
-            }
-            p.lastPos.copy(p.mesh.position);
+        // Only animate if moved recently
+        if (Date.now() - p.lastMoveTime < 200) {
+            p.animTime += delta * 10;
+            const legL = p.mesh.getObjectByName('legL'); if(legL) legL.rotation.x = Math.sin(p.animTime)*0.8;
+            const legR = p.mesh.getObjectByName('legR'); if(legR) legR.rotation.x = Math.cos(p.animTime)*0.8;
+            const armL = p.mesh.getObjectByName('armL'); if(armL) armL.rotation.x = Math.cos(p.animTime)*0.8;
+            const armR = p.mesh.getObjectByName('armR'); if(armR) armR.rotation.x = Math.sin(p.animTime)*0.8;
+        } else {
+            // Reset to Idle
+            p.animTime = 0;
+            const legL = p.mesh.getObjectByName('legL'); if(legL) legL.rotation.x = 0;
+            const legR = p.mesh.getObjectByName('legR'); if(legR) legR.rotation.x = 0;
+            const armL = p.mesh.getObjectByName('armL'); if(armL) armL.rotation.x = 0;
+            const armR = p.mesh.getObjectByName('armR'); if(armR) armR.rotation.x = 0;
         }
     }
 
