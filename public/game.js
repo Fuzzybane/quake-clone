@@ -132,21 +132,18 @@ socket.on('gameReset', (allPlayersData) => {
     ammoStore = [999, WEAPONS[1].startAmmo, WEAPONS[2].startAmmo]; 
     updateHUD();
     
-    // Reset all player models to correct positions immediately
+    // Clear vignette if stuck
+    const vig = document.getElementById('damage-vignette');
+    if(vig) vig.style.opacity = '0';
+
     if(allPlayersData) {
         for(let id in allPlayersData) {
             if(players[id] && players[id].mesh) {
                 const p = allPlayersData[id];
                 players[id].mesh.position.set(p.x, p.y, p.z);
                 players[id].mesh.visible = true; 
-                // Reset animation state
-                players[id].animTime = 0;
-                players[id].lastMoveTime = Date.now();
-                
-                if(id === socket.id) {
-                    controls.getObject().position.set(p.x, p.y, p.z); 
-                    velocity.set(0,0,0); 
-                }
+                players[id].animTime = 0; players[id].lastMoveTime = Date.now();
+                if(id === socket.id) { controls.getObject().position.set(p.x, p.y, p.z); velocity.set(0,0,0); }
             }
         }
     }
@@ -171,7 +168,32 @@ socket.on('playerShot', (data) => {
         createBulletTrail(start, end, color); playSound(type);
     }
 });
-socket.on('healthUpdate', (data) => { if(data.id === socket.id) { myHealth = data.health; updateHUD(); document.body.style.boxShadow = "inset 0 0 50px red"; setTimeout(() => document.body.style.boxShadow = "none", 100); } });
+
+// --- UPDATED HEALTH LOGIC (RED/GREEN VIGNETTE) ---
+socket.on('healthUpdate', (data) => { 
+    if(data.id === socket.id) { 
+        const oldHealth = myHealth;
+        myHealth = data.health; 
+        updateHUD(); 
+
+        const vig = document.getElementById('damage-vignette');
+        if(vig) {
+            if (myHealth < oldHealth) {
+                // RED for Damage
+                vig.style.background = 'radial-gradient(circle, transparent 50%, rgba(255, 0, 0, 0.7) 100%)';
+            } else if (myHealth > oldHealth) {
+                // GREEN for Healing
+                vig.style.background = 'radial-gradient(circle, transparent 50%, rgba(0, 255, 0, 0.7) 100%)';
+            }
+            vig.style.opacity = '1';
+            setTimeout(() => vig.style.opacity = '0', 300);
+        }
+        
+        document.body.style.boxShadow = "inset 0 0 50px red"; 
+        setTimeout(() => document.body.style.boxShadow = "none", 300); 
+    } 
+});
+
 socket.on('playerDied', (id) => {
     if (id === socket.id) { document.getElementById('winner-text').innerText = "RESPAWNING..."; document.getElementById('restart-timer').innerText = ""; document.getElementById('game-over-overlay').style.display = 'flex'; }
     else if (players[id]) { players[id].mesh.visible = false; }
@@ -297,7 +319,6 @@ function init() {
     document.addEventListener('mousedown', onShoot);
 }
 
-// --- RESTORED DETAILED WEAPON MODELS ---
 function createFPSWeapons() {
     weaponGroup = new THREE.Group();
     weaponGroup.position.set(0.4, -0.3, -0.6);
@@ -483,28 +504,28 @@ function onKeyDown(e) {
 }
 
 function animate() {
-    requestAnimationFrame(animate); 
-    const time = performance.now(); 
-    const delta = Math.min((time-prevTime)/1000, 0.1); 
-    prevTime=time;
+    requestAnimationFrame(animate); const time = performance.now(); const delta = Math.min((time-prevTime)/1000, 0.1); prevTime=time;
     
-    // Animate Players (Time-Based)
     for(let id in players) {
         const p = players[id];
-        // Check if server updated position recently (200ms window)
-        if (Date.now() - p.lastMoveTime < 200) {
-            p.animTime += delta * 10;
-            const legL = p.mesh.getObjectByName('legL'); if(legL) legL.rotation.x = Math.sin(p.animTime)*0.8;
-            const legR = p.mesh.getObjectByName('legR'); if(legR) legR.rotation.x = Math.cos(p.animTime)*0.8;
-            const armL = p.mesh.getObjectByName('armL'); if(armL) armL.rotation.x = Math.cos(p.animTime)*0.8;
-            const armR = p.mesh.getObjectByName('armR'); if(armR) armR.rotation.x = Math.sin(p.animTime)*0.8;
-        } else {
-            // Idle
-            p.animTime = 0;
-            const legL = p.mesh.getObjectByName('legL'); if(legL) legL.rotation.x = 0;
-            const legR = p.mesh.getObjectByName('legR'); if(legR) legR.rotation.x = 0;
-            const armL = p.mesh.getObjectByName('armL'); if(armL) armL.rotation.x = 0;
-            const armR = p.mesh.getObjectByName('armR'); if(armR) armR.rotation.x = 0;
+        // Fix: Check if lastPos exists before distanceTo
+        if (p.lastPos && p.mesh) {
+            const dist = p.mesh.position.distanceTo(p.lastPos);
+            const speed = dist / delta;
+            if(speed > 0.5) {
+                p.animTime += delta * 10;
+                const legL = p.mesh.getObjectByName('legL'); if(legL) legL.rotation.x = Math.sin(p.animTime)*0.8;
+                const legR = p.mesh.getObjectByName('legR'); if(legR) legR.rotation.x = Math.cos(p.animTime)*0.8;
+                const armL = p.mesh.getObjectByName('armL'); if(armL) armL.rotation.x = Math.cos(p.animTime)*0.8;
+                const armR = p.mesh.getObjectByName('armR'); if(armR) armR.rotation.x = Math.sin(p.animTime)*0.8;
+            } else {
+                p.animTime = 0;
+                const legL = p.mesh.getObjectByName('legL'); if(legL) legL.rotation.x = 0;
+                const legR = p.mesh.getObjectByName('legR'); if(legR) legR.rotation.x = 0;
+                const armL = p.mesh.getObjectByName('armL'); if(armL) armL.rotation.x = 0;
+                const armR = p.mesh.getObjectByName('armR'); if(armR) armR.rotation.x = 0;
+            }
+            p.lastPos.copy(p.mesh.position);
         }
     }
 

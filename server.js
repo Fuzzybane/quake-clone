@@ -35,7 +35,6 @@ function getUniqueBotName() {
 
 // --- PROCEDURAL MAP GENERATOR ---
 function generateMap() {
-    // Reset Data
     currentMap = { walls: [], platforms: [], ramps: [], spawns: [] };
     ammoPickups = {};
     healthPickups = {};
@@ -51,22 +50,22 @@ function generateMap() {
     
     if (type === 'RING') {
         // --- RING MAP ---
-        // Platforms (Split for gaps)
+        // Platforms (Height 12)
         currentMap.platforms.push({ x: -50, z: 70, w: 80, d: 20 });
         currentMap.platforms.push({ x: 50, z: 70, w: 80, d: 20 });
-        currentMap.platforms.push({ x: 0, z: 70, w: 20, d: 20 }); 
+        currentMap.platforms.push({ x: 0, z: 70, w: 20, d: 20 }); // Pad
 
         currentMap.platforms.push({ x: -50, z: -70, w: 80, d: 20 });
         currentMap.platforms.push({ x: 50, z: -70, w: 80, d: 20 });
-        currentMap.platforms.push({ x: 0, z: -70, w: 20, d: 20 }); 
+        currentMap.platforms.push({ x: 0, z: -70, w: 20, d: 20 }); // Pad
 
         currentMap.platforms.push({ x: 70, z: -50, w: 20, d: 80 }); 
         currentMap.platforms.push({ x: 70, z: 50, w: 20, d: 80 });
-        currentMap.platforms.push({ x: 70, z: 0, w: 20, d: 20 }); 
+        currentMap.platforms.push({ x: 70, z: 0, w: 20, d: 20 }); // Pad
 
         currentMap.platforms.push({ x: -70, z: -50, w: 20, d: 80 });
         currentMap.platforms.push({ x: -70, z: 50, w: 20, d: 80 });
-        currentMap.platforms.push({ x: -70, z: 0, w: 20, d: 20 }); 
+        currentMap.platforms.push({ x: -70, z: 0, w: 20, d: 20 }); // Pad
 
         // Ramps (Inwards)
         currentMap.ramps.push({ x: 0, z: 45, dir: 'North' });
@@ -79,68 +78,58 @@ function generateMap() {
         addItem(0, -70, 13.5, 'railgun');
 
     } else if (type === 'CROSS') {
-        // --- CROSS MAP ---
-        // Central Hub (Height 12)
-        // Vertical Strip
-        currentMap.platforms.push({ x: 0, z: 50, w: 40, d: 80 }); // Top
-        currentMap.platforms.push({ x: 0, z: -50, w: 40, d: 80 }); // Bottom
-        currentMap.platforms.push({ x: 0, z: 0, w: 40, d: 20 }); // Center
+        // --- CROSS MAP (FIXED) ---
+        // Platforms extend to +/- 90
+        currentMap.platforms.push({ x: 0, z: 0, w: 40, d: 180 }); // Vertical Strip
+        currentMap.platforms.push({ x: 0, z: 0, w: 180, d: 40 }); // Horizontal Strip
+        
+        // Ramps: Placed at +/- 105, facing INWARDS towards the tips at +/- 90
+        // Top Tip (Z=90). Ramp Z=105. Facing South (-Z)
+        currentMap.ramps.push({ x: 0, z: 105, dir: 'South' }); 
+        
+        // Bottom Tip (Z=-90). Ramp Z=-105. Facing North (+Z)
+        currentMap.ramps.push({ x: 0, z: -105, dir: 'North' }); 
+        
+        // Right Tip (X=90). Ramp X=105. Facing West (-X)
+        currentMap.ramps.push({ x: 105, z: 0, dir: 'West' });
+        
+        // Left Tip (X=-90). Ramp X=-105. Facing East (+X)
+        currentMap.ramps.push({ x: -105, z: 0, dir: 'East' });
 
-        // Horizontal Strip
-        currentMap.platforms.push({ x: 50, z: 0, w: 80, d: 40 }); // Right
-        currentMap.platforms.push({ x: -50, z: 0, w: 80, d: 40 }); // Left
-
-        // Ramps (Leading UP to the center from the ground)
-        // North Side Ramp (Goes Up South)
-        currentMap.ramps.push({ x: 0, z: 35, dir: 'South' }); // Z: 50 -> 20 (High)
-        // South Side Ramp (Goes Up North)
-        currentMap.ramps.push({ x: 0, z: -35, dir: 'North' }); 
-        // East Side Ramp (Goes Up West)
-        currentMap.ramps.push({ x: 35, z: 0, dir: 'West' });
-        // West Side Ramp (Goes Up East)
-        currentMap.ramps.push({ x: -35, z: 0, dir: 'East' });
-
-        // Items
-        addItem(0, 0, 13.5, 'railgun'); // King of Hill
+        // Item
+        addItem(0, 0, 13.5, 'railgun');
         
     } else if (type === 'FORTS') {
-        // --- FORTS MAP ---
-        // North Fort
-        currentMap.platforms.push({ x: 0, z: 70, w: 100, d: 40 }); 
-        // South Fort
-        currentMap.platforms.push({ x: 0, z: -70, w: 100, d: 40 }); 
-        // Bridge
-        currentMap.platforms.push({ x: 0, z: 0, w: 20, d: 100 }); 
+        // --- FORTS MAP (FIXED) ---
+        // Forts are at Z +/- 60. Width 100 (X -50 to 50).
+        currentMap.platforms.push({ x: 0, z: 60, w: 100, d: 40 }); // North Fort
+        currentMap.platforms.push({ x: 0, z: -60, w: 100, d: 40 }); // South Fort
+        currentMap.platforms.push({ x: 0, z: 0, w: 20, d: 80 }); // Bridge
 
-        // Ramps (Side access to forts)
-        // North Fort Ramps (At Z=60 edge. Ramp center Z=60? No. Ramp Center Z=70, X=58)
-        // Target X=50 (Edge of fort). Start X=65.
-        // Westward Ramp (Goes Up Left)
-        currentMap.ramps.push({ x: 58, z: 70, dir: 'West' }); 
-        // Eastward Ramp (Goes Up Right)
-        currentMap.ramps.push({ x: -58, z: 70, dir: 'East' });
+        // Ramps: Placed on the SIDES (Flanks) at X +/- 65.
+        // North Fort (Z=60). Ramps need to lead onto it.
+        currentMap.ramps.push({ x: 65, z: 60, dir: 'West' }); // Right side, goes Left
+        currentMap.ramps.push({ x: -65, z: 60, dir: 'East' }); // Left side, goes Right
 
-        // South Fort Ramps
-        currentMap.ramps.push({ x: 58, z: -70, dir: 'West' });
-        currentMap.ramps.push({ x: -58, z: -70, dir: 'East' });
+        // South Fort (Z=-60)
+        currentMap.ramps.push({ x: 65, z: -60, dir: 'West' });
+        currentMap.ramps.push({ x: -65, z: -60, dir: 'East' });
 
         // Items
-        addItem(0, 70, 13.5, 'railgun');
-        addItem(0, -70, 13.5, 'railgun');
+        addItem(0, 60, 13.5, 'railgun');
+        addItem(0, -60, 13.5, 'railgun');
     }
 
     // --- 2. OBSTACLES (Mirrored Symmetry) ---
     const obstacleCount = 3 + Math.floor(Math.random() * 3);
 
     for(let i=0; i<obstacleCount; i++) {
-        const rx = 25 + Math.random() * 50; 
-        const rz = 25 + Math.random() * 50; 
+        const rx = 25 + Math.random() * 40; 
+        const rz = 25 + Math.random() * 40; 
         
-        // Keep away from axes (lanes)
         if(Math.abs(rx) < 15 || Math.abs(rz) < 15) continue; 
         if(Math.abs(rx - rz) < 10) continue; 
 
-        // 4-Way Symmetry
         currentMap.walls.push({ x: rx, z: rz, w: 10, d: 10 });
         currentMap.walls.push({ x: -rx, z: -rz, w: 10, d: 10 });
         currentMap.walls.push({ x: -rx, z: rz, w: 10, d: 10 });
@@ -155,7 +144,6 @@ function generateMap() {
         { x: 0, z: 70 }, { x: 0, z: -70 } 
     ];
 
-    // Ground Items
     addItem(30, 30, 1.5, 'shotgun');
     addItem(-30, -30, 1.5, 'shotgun');
     addItem(30, -30, 1.5, 'shotgun');
@@ -184,7 +172,6 @@ function isPosSafe(x, z) {
     if (isNaN(x) || isNaN(z)) return false;
     if (x > 90 || x < -90 || z > 90 || z < -90) return false;
 
-    // Walls
     for (let w of currentMap.walls) {
         const halfW = (w.w/2) + 4; 
         const halfD = (w.d/2) + 4;
@@ -218,7 +205,6 @@ function getSafeSpawn() {
 
         let minDist = Infinity;
         let valid = true;
-
         for (let id in players) {
             const p = players[id];
             if (!p.isDead) {
@@ -235,7 +221,6 @@ function getSafeSpawn() {
     }
 
     if (bestSpot) return bestSpot;
-
     const fallback = currentMap.spawns[Math.floor(Math.random() * currentMap.spawns.length)];
     return { x: fallback.x + (Math.random()-0.5)*5, z: fallback.z + (Math.random()-0.5)*5 };
 }
