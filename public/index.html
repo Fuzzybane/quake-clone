@@ -12,9 +12,17 @@
         <h1>WEB QUAKE ARENA</h1>
         <input type="text" id="nickname" placeholder="Enter Nickname" maxlength="12">
         
-        <!-- Frag Limit Input -->
+        <!-- Game Settings -->
+        <div style="margin-bottom: 10px; display: flex; align-items: center; gap: 10px;">
+            <label style="color: #0f0; font-size: 20px;">MODE:</label>
+            <select id="game-mode" style="padding: 5px; background: #000; color: #fff; border: 1px solid #0f0; font-family: inherit; font-size: 16px;">
+                <option value="DM">DEATHMATCH</option>
+                <option value="CTF">CAPTURE THE FLAG</option>
+            </select>
+        </div>
+
         <div style="margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
-            <label style="color: #0f0; font-size: 20px;">FRAG LIMIT:</label>
+            <label id="limit-label" style="color: #0f0; font-size: 20px;">FRAG LIMIT:</label>
             <input type="number" id="frag-limit" value="10" min="1" max="50" style="width: 60px; margin: 0;">
         </div>
 
@@ -41,13 +49,13 @@
         <div id="restart-timer">Returning to lobby in 6...</div>
     </div>
 
-    <!-- Server Messages (Join/Leave) -->
+    <!-- Server Messages -->
     <div id="messages-container"></div>
 
-    <!-- NEW: DAMAGE VIGNETTE -->
+    <!-- Vignette -->
     <div id="damage-vignette"></div>
 
-    <!-- Chat System -->
+    <!-- Chat -->
     <div id="chat-ui">
         <div id="chat-history"></div>
         <input type="text" id="chat-input" placeholder="Press Enter to send..." maxlength="60">
@@ -62,7 +70,7 @@
             ❚❚ <span id="ammo-display">INF</span>
         </div>
         <div id="score-container" class="hud-item">
-            SCORE: <span id="score-display">0</span>
+            <span id="score-label">SCORE:</span> <span id="score-display">0</span>
         </div>
     </div>
   
@@ -72,6 +80,25 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
+    
+    <!-- Menu Logic -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const modeSel = document.getElementById('game-mode');
+            const limitLbl = document.getElementById('limit-label');
+            const limitInp = document.getElementById('frag-limit');
+            
+            modeSel.addEventListener('change', () => {
+                if(modeSel.value === 'CTF') {
+                    limitLbl.innerText = "CAP LIMIT:";
+                    limitInp.value = 3;
+                } else {
+                    limitLbl.innerText = "FRAG LIMIT:";
+                    limitInp.value = 10;
+                }
+            });
+        });
+    </script>
     
     <!-- Game Logic -->
     <script src="game.js"></script>

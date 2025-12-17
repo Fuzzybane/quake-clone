@@ -5,6 +5,7 @@ let objects = [];
 let groundObjects = []; 
 let ammoMeshes = {}; 
 let healthMeshes = {};
+let flagMeshes = {}; 
 let players = {}; 
 let myId;
 let myHealth = 100;
@@ -67,6 +68,12 @@ const MAT_WALL = new THREE.MeshStandardMaterial({ map: generateTexture('wall'), 
 // --- 1. SETUP SOCKET LISTENERS ---
 
 socket.on('connect', () => { console.log("Connected to server"); });
+
+// LISTENER FOR MODE UPDATE
+socket.on('updateGameMode', (mode) => {
+    const el = document.getElementById('mode-display');
+    if(el) el.innerText = mode === 'CTF' ? 'CAPTURE THE FLAG' : 'DEATHMATCH';
+});
 
 socket.on('mapConfig', (mapData) => { 
     console.log("Map received");
@@ -132,9 +139,10 @@ socket.on('gameReset', (allPlayersData) => {
     ammoStore = [999, WEAPONS[1].startAmmo, WEAPONS[2].startAmmo]; 
     updateHUD();
     
-    // Clear vignette if stuck
-    const vig = document.getElementById('damage-vignette');
-    if(vig) vig.style.opacity = '0';
+    // Reset flags
+    if(flagMeshes.red) scene.remove(flagMeshes.red);
+    if(flagMeshes.blue) scene.remove(flagMeshes.blue);
+    flagMeshes = {};
 
     if(allPlayersData) {
         for(let id in allPlayersData) {
@@ -168,29 +176,16 @@ socket.on('playerShot', (data) => {
         createBulletTrail(start, end, color); playSound(type);
     }
 });
-
-// --- UPDATED HEALTH LOGIC (RED/GREEN VIGNETTE) ---
 socket.on('healthUpdate', (data) => { 
     if(data.id === socket.id) { 
-        const oldHealth = myHealth;
-        myHealth = data.health; 
-        updateHUD(); 
-
+        const oldHealth = myHealth; myHealth = data.health; updateHUD(); 
         const vig = document.getElementById('damage-vignette');
         if(vig) {
-            if (myHealth < oldHealth) {
-                // RED for Damage
-                vig.style.background = 'radial-gradient(circle, transparent 50%, rgba(255, 0, 0, 0.7) 100%)';
-            } else if (myHealth > oldHealth) {
-                // GREEN for Healing
-                vig.style.background = 'radial-gradient(circle, transparent 50%, rgba(0, 255, 0, 0.7) 100%)';
-            }
-            vig.style.opacity = '1';
-            setTimeout(() => vig.style.opacity = '0', 300);
+            if (myHealth < oldHealth) vig.style.background = 'radial-gradient(circle, transparent 50%, rgba(255, 0, 0, 0.7) 100%)';
+            else if (myHealth > oldHealth) vig.style.background = 'radial-gradient(circle, transparent 50%, rgba(0, 255, 0, 0.7) 100%)';
+            vig.style.opacity = '1'; setTimeout(() => vig.style.opacity = '0', 300);
         }
-        
-        document.body.style.boxShadow = "inset 0 0 50px red"; 
-        setTimeout(() => document.body.style.boxShadow = "none", 300); 
+        document.body.style.boxShadow = "inset 0 0 50px red"; setTimeout(() => document.body.style.boxShadow = "none", 300); 
     } 
 });
 
@@ -208,6 +203,21 @@ socket.on('ammoRespawn', (id) => { if(ammoMeshes[id]) ammoMeshes[id].visible = t
 socket.on('healthState', (serverHp) => { for(let id in serverHp) { createHealthBox(serverHp[id]); if(!serverHp[id].active) healthMeshes[id].visible = false; } });
 socket.on('healthTaken', (id) => { if(healthMeshes[id]) healthMeshes[id].visible = false; });
 socket.on('healthRespawn', (id) => { if(healthMeshes[id]) healthMeshes[id].visible = true; });
+
+// FLAGS
+socket.on('flagState', (flags) => { updateFlag('red', flags.red); updateFlag('blue', flags.blue); });
+socket.on('flagUpdate', (flags) => { updateFlag('red', flags.red); updateFlag('blue', flags.blue); });
+function updateFlag(color, data) {
+    if(!scene) return;
+    if(!flagMeshes[color]) {
+        const geo = new THREE.CylinderGeometry(0.5, 0.5, 4, 8);
+        const mat = new THREE.MeshBasicMaterial({ color: color === 'red' ? 0xff0000 : 0x0000ff });
+        const mesh = new THREE.Mesh(geo, mat); scene.add(mesh); flagMeshes[color] = mesh;
+    }
+    const mesh = flagMeshes[color];
+    if (data.carrier) mesh.visible = false; 
+    else { mesh.visible = true; mesh.position.set(data.x, data.y + 2, data.z); }
+}
 
 
 // --- 2. AUDIO FUNCTIONS ---
@@ -258,6 +268,7 @@ if(joinBtn) {
     joinBtn.addEventListener('click', () => {
         const nickname = document.getElementById('nickname').value || "Player";
         const fragLimit = document.getElementById('frag-limit').value || 10;
+        const mode = document.getElementById('game-mode').value;
         
         document.getElementById('menu-overlay').style.display = 'none'; 
         document.getElementById('hud').style.display = 'flex'; 
@@ -274,7 +285,7 @@ if(joinBtn) {
         }
 
         animate(); 
-        socket.emit('joinGame', { nickname: nickname, fragLimit: fragLimit });
+        socket.emit('joinGame', { nickname: nickname, fragLimit: fragLimit, gameMode: mode });
     });
 }
 if(addBotBtn) addBotBtn.addEventListener('click', () => { socket.emit('addBot'); });
@@ -319,6 +330,7 @@ function init() {
     document.addEventListener('mousedown', onShoot);
 }
 
+// --- DETAILED WEAPON MODELS ---
 function createFPSWeapons() {
     weaponGroup = new THREE.Group();
     weaponGroup.position.set(0.4, -0.3, -0.6);
@@ -444,8 +456,9 @@ function createHealthBox(data) {
     scene.add(m); healthMeshes[data.id] = m; m.userData = data;
 }
 
-function createHumanoidMesh(isBot) {
-    const g = new THREE.Group(); const mat = new THREE.MeshLambertMaterial({color:isBot?0xff3333:0x33ff33});
+function createHumanoidMesh(team) {
+    let col = 0x00ff00; if(team === 'RED') col = 0xff0000; if(team === 'BLUE') col = 0x0000ff;
+    const g = new THREE.Group(); const mat = new THREE.MeshLambertMaterial({color:col});
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.8,0.8), mat); head.position.y = 1.4; g.add(head);
     const body = new THREE.Mesh(new THREE.BoxGeometry(1.2,1.5,0.6), mat); body.position.y = 0.25; g.add(body);
     const armG = new THREE.BoxGeometry(0.4, 1.5, 0.4); armG.translate(0, -0.6, 0); const lArm = new THREE.Mesh(armG, mat); lArm.position.set(-0.9, 0.9, 0); lArm.name='armL'; g.add(lArm); const rArm = new THREE.Mesh(armG, mat); rArm.position.set(0.9, 0.9, 0); rArm.name='armR'; g.add(rArm);
@@ -456,7 +469,7 @@ function createHumanoidMesh(isBot) {
 }
 function addOtherPlayer(p) { 
     if(!scene) return; 
-    const m = createHumanoidMesh(p.isBot); 
+    const m = createHumanoidMesh(p.team); 
     m.position.set(p.x,p.y,p.z); 
     scene.add(m); 
     players[p.id] = {
@@ -505,10 +518,8 @@ function onKeyDown(e) {
 
 function animate() {
     requestAnimationFrame(animate); const time = performance.now(); const delta = Math.min((time-prevTime)/1000, 0.1); prevTime=time;
-    
     for(let id in players) {
         const p = players[id];
-        // Fix: Check if lastPos exists before distanceTo
         if (p.lastPos && p.mesh) {
             const dist = p.mesh.position.distanceTo(p.lastPos);
             const speed = dist / delta;
@@ -528,10 +539,10 @@ function animate() {
             p.lastPos.copy(p.mesh.position);
         }
     }
-
     const pPos = controls.getObject().position;
     for(let k in ammoMeshes) { if(ammoMeshes[k].visible) { ammoMeshes[k].rotation.y+=0.02; if(pPos.distanceTo(ammoMeshes[k].position)<2.5) { const t=ammoMeshes[k].userData.type; let p=false; if(t==='shotgun'&&ammoStore[1]<WEAPONS[1].maxAmmo){ammoStore[1]=Math.min(ammoStore[1]+6,WEAPONS[1].maxAmmo);p=true;} if(t==='railgun'&&ammoStore[2]<WEAPONS[2].maxAmmo){ammoStore[2]=Math.min(ammoStore[2]+2,WEAPONS[2].maxAmmo);p=true;} if(p){socket.emit('pickupAmmo',k);ammoMeshes[k].visible=false;updateHUD();} } } }
     for(let k in healthMeshes) { if(healthMeshes[k].visible) { healthMeshes[k].rotation.y+=0.02; if(pPos.distanceTo(healthMeshes[k].position)<2.5 && myHealth < 100) { socket.emit('pickupHealth',k); healthMeshes[k].visible=false; } } }
+    for(let k in flagMeshes) { if(flagMeshes[k].visible) { flagMeshes[k].rotation.y += 0.05; } }
 
     if (controls.isLocked) {
         if(velocity.y < -100) velocity.y = -100;
