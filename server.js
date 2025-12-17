@@ -50,90 +50,118 @@ function generateMap() {
     
     if (type === 'RING') {
         // --- RING MAP ---
-        // Platforms (Height 12)
         currentMap.platforms.push({ x: -50, z: 70, w: 80, d: 20 });
         currentMap.platforms.push({ x: 50, z: 70, w: 80, d: 20 });
-        currentMap.platforms.push({ x: 0, z: 70, w: 20, d: 20 }); // Pad
+        currentMap.platforms.push({ x: 0, z: 70, w: 20, d: 20 }); 
 
         currentMap.platforms.push({ x: -50, z: -70, w: 80, d: 20 });
         currentMap.platforms.push({ x: 50, z: -70, w: 80, d: 20 });
-        currentMap.platforms.push({ x: 0, z: -70, w: 20, d: 20 }); // Pad
+        currentMap.platforms.push({ x: 0, z: -70, w: 20, d: 20 }); 
 
         currentMap.platforms.push({ x: 70, z: -50, w: 20, d: 80 }); 
         currentMap.platforms.push({ x: 70, z: 50, w: 20, d: 80 });
-        currentMap.platforms.push({ x: 70, z: 0, w: 20, d: 20 }); // Pad
+        currentMap.platforms.push({ x: 70, z: 0, w: 20, d: 20 }); 
 
         currentMap.platforms.push({ x: -70, z: -50, w: 20, d: 80 });
         currentMap.platforms.push({ x: -70, z: 50, w: 20, d: 80 });
-        currentMap.platforms.push({ x: -70, z: 0, w: 20, d: 20 }); // Pad
+        currentMap.platforms.push({ x: -70, z: 0, w: 20, d: 20 }); 
 
-        // Ramps (Inwards)
         currentMap.ramps.push({ x: 0, z: 45, dir: 'North' });
         currentMap.ramps.push({ x: 0, z: -45, dir: 'South' });
         currentMap.ramps.push({ x: 45, z: 0, dir: 'East' });
         currentMap.ramps.push({ x: -45, z: 0, dir: 'West' });
 
-        // Items
         addItem(0, 70, 13.5, 'railgun');
         addItem(0, -70, 13.5, 'railgun');
 
     } else if (type === 'CROSS') {
         // --- CROSS MAP (FIXED) ---
-        // Platforms extend to +/- 90
-        currentMap.platforms.push({ x: 0, z: 0, w: 40, d: 180 }); // Vertical Strip
-        currentMap.platforms.push({ x: 0, z: 0, w: 180, d: 40 }); // Horizontal Strip
+        // Platforms shortened to +/- 70 (Total length 140)
+        currentMap.platforms.push({ x: 0, z: 0, w: 40, d: 140 }); // Vertical
+        currentMap.platforms.push({ x: 0, z: 0, w: 140, d: 40 }); // Horizontal
         
-        // Ramps: Placed at +/- 105, facing INWARDS towards the tips at +/- 90
-        // Top Tip (Z=90). Ramp Z=105. Facing South (-Z)
-        currentMap.ramps.push({ x: 0, z: 105, dir: 'South' }); 
+        // Ramps moved IN to +/- 85.
+        // Ramp Length 30. Center 85. Range: 70 (High) to 100 (Low).
+        // This fits perfectly inside the 100-unit border wall.
         
-        // Bottom Tip (Z=-90). Ramp Z=-105. Facing North (+Z)
-        currentMap.ramps.push({ x: 0, z: -105, dir: 'North' }); 
+        // North Ramp (Center Z=85). Faces South (Up towards -Z).
+        // Wait, standard logic: North Ramp faces North?
+        // Let's stick to the convention used in Game.js:
+        // Dir 'South' means rotation such that it goes UP towards -Z.
+        // If Platform ends at Z=70. Ramp should start at Z=100 and go UP to Z=70.
+        // Center is Z=85.
+        currentMap.ramps.push({ x: 0, z: 85, dir: 'South' }); 
         
-        // Right Tip (X=90). Ramp X=105. Facing West (-X)
-        currentMap.ramps.push({ x: 105, z: 0, dir: 'West' });
+        // South Ramp (Center Z=-85). UP towards +Z.
+        currentMap.ramps.push({ x: 0, z: -85, dir: 'North' }); 
         
-        // Left Tip (X=-90). Ramp X=-105. Facing East (+X)
-        currentMap.ramps.push({ x: -105, z: 0, dir: 'East' });
+        // East Ramp (Center X=85). UP towards -X.
+        currentMap.ramps.push({ x: 85, z: 0, dir: 'West' });
+        
+        // West Ramp (Center X=-85). UP towards +X.
+        currentMap.ramps.push({ x: -85, z: 0, dir: 'East' });
 
-        // Item
         addItem(0, 0, 13.5, 'railgun');
         
     } else if (type === 'FORTS') {
-        // --- FORTS MAP (FIXED) ---
-        // Forts are at Z +/- 60. Width 100 (X -50 to 50).
-        currentMap.platforms.push({ x: 0, z: 60, w: 100, d: 40 }); // North Fort
-        currentMap.platforms.push({ x: 0, z: -60, w: 100, d: 40 }); // South Fort
-        currentMap.platforms.push({ x: 0, z: 0, w: 20, d: 80 }); // Bridge
+        // --- FORTS MAP ---
+        currentMap.platforms.push({ x: 0, z: 60, w: 100, d: 40 }); 
+        currentMap.platforms.push({ x: 0, z: -60, w: 100, d: 40 }); 
+        currentMap.platforms.push({ x: 0, z: 0, w: 20, d: 80 }); 
 
-        // Ramps: Placed on the SIDES (Flanks) at X +/- 65.
-        // North Fort (Z=60). Ramps need to lead onto it.
-        currentMap.ramps.push({ x: 65, z: 60, dir: 'West' }); // Right side, goes Left
-        currentMap.ramps.push({ x: -65, z: 60, dir: 'East' }); // Left side, goes Right
+        // Ramps
+        currentMap.ramps.push({ x: 63, z: 60, dir: 'West' }); 
+        currentMap.ramps.push({ x: -63, z: 60, dir: 'East' }); 
+        currentMap.ramps.push({ x: 63, z: -60, dir: 'West' });
+        currentMap.ramps.push({ x: -63, z: -60, dir: 'East' });
 
-        // South Fort (Z=-60)
-        currentMap.ramps.push({ x: 65, z: -60, dir: 'West' });
-        currentMap.ramps.push({ x: -65, z: -60, dir: 'East' });
-
-        // Items
         addItem(0, 60, 13.5, 'railgun');
         addItem(0, -60, 13.5, 'railgun');
     }
 
-    // --- 2. OBSTACLES (Mirrored Symmetry) ---
+    // --- 2. OBSTACLES (With Strict Ramp Clearance) ---
     const obstacleCount = 3 + Math.floor(Math.random() * 3);
 
     for(let i=0; i<obstacleCount; i++) {
-        const rx = 25 + Math.random() * 40; 
-        const rz = 25 + Math.random() * 40; 
+        const rx = 25 + Math.random() * 45; 
+        const rz = 25 + Math.random() * 45; 
         
+        // Keep away from axes
         if(Math.abs(rx) < 15 || Math.abs(rz) < 15) continue; 
         if(Math.abs(rx - rz) < 10) continue; 
 
-        currentMap.walls.push({ x: rx, z: rz, w: 10, d: 10 });
-        currentMap.walls.push({ x: -rx, z: -rz, w: 10, d: 10 });
-        currentMap.walls.push({ x: -rx, z: rz, w: 10, d: 10 });
-        currentMap.walls.push({ x: rx, z: -rz, w: 10, d: 10 });
+        // --- STRICT RAMP CHECK ---
+        // We are about to place walls at (rx, rz), (-rx, rz), etc.
+        // We must check ALL 4 potential positions against ALL ramps.
+        let overlapsRamp = false;
+        const potentialSpots = [
+            {x: rx, z: rz}, {x: -rx, z: -rz}, {x: -rx, z: rz}, {x: rx, z: -rz}
+        ];
+
+        for (let spot of potentialSpots) {
+            for (let r of currentMap.ramps) {
+                // Ramp center is (r.x, r.z). Length 30, Width ~10. Safe radius ~20.
+                if (Math.abs(spot.x - r.x) < 20 && Math.abs(spot.z - r.z) < 20) {
+                    overlapsRamp = true;
+                    break;
+                }
+            }
+            if (overlapsRamp) break;
+        }
+
+        if (overlapsRamp) continue; // Skip this obstacle set
+        // -------------------------
+
+        const shape = Math.random();
+        if (shape < 0.4) {
+            addSymmetricalWall(rx, rz, 10, 10);
+        } else if (shape < 0.7) {
+            if(Math.random()>0.5) addSymmetricalWall(rx, rz, 20, 5);
+            else addSymmetricalWall(rx, rz, 5, 20);
+        } else {
+            addSymmetricalWall(rx, rz - 5, 5, 15); 
+            addSymmetricalWall(rx - 5, rz, 15, 5); 
+        }
     }
 
     // --- 3. SPAWNS & ITEMS ---
@@ -152,9 +180,17 @@ function generateMap() {
     addHealth(0, 0, 1.5);
     addHealth(85, 0, 1.5);
     addHealth(-85, 0, 1.5);
+    addHealth(0, 85, 1.5);
+    addHealth(0, -85, 1.5);
 }
 
-// Helper to add items cleanly
+// Helpers
+function addSymmetricalWall(x, z, w, d) {
+    currentMap.walls.push({ x: x, z: z, w: w, d: d });
+    currentMap.walls.push({ x: -x, z: -z, w: w, d: d });
+    currentMap.walls.push({ x: -x, z: z, w: w, d: d });
+    currentMap.walls.push({ x: x, z: -z, w: w, d: d });
+}
 function addItem(x, z, y, type) {
     const id = `item_${Object.keys(ammoPickups).length + Math.random()}`;
     ammoPickups[id] = { id, x, z, y, type, active: true };
@@ -237,7 +273,6 @@ function checkBotWallCollision(x, z) {
 
 function getBotHeight(x, z, currentY) {
     if (isNaN(x) || isNaN(z)) return 2;
-    // 1. Ramps
     for (let r of currentMap.ramps) {
         let dx = x - r.x;
         let dz = z - r.z;
@@ -246,7 +281,6 @@ function getBotHeight(x, z, currentY) {
         if (r.dir === 'East' && Math.abs(dz) < 4 && dx > -15 && dx < 15) return 2 + ((dx + 15) / 30 * 12);
         if (r.dir === 'West' && Math.abs(dz) < 4 && dx > -15 && dx < 15) return 2 + ((15 - dx) / 30 * 12);
     }
-    // 2. Platforms
     for (let p of currentMap.platforms) {
         const halfW = p.w / 2;
         const halfD = p.d / 2;
