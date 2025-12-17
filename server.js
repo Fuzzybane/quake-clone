@@ -57,60 +57,47 @@ function generateMap() {
     console.log(`Generating New Map: ${type} (${gameMode})`);
 
     // --- 1. ARCHETYPE GENERATION ---
+    
     if (type === 'RING') {
         currentMap.platforms.push({ x: -50, z: 70, w: 80, d: 20 });
         currentMap.platforms.push({ x: 50, z: 70, w: 80, d: 20 });
         currentMap.platforms.push({ x: 0, z: 70, w: 20, d: 20 }); 
-
         currentMap.platforms.push({ x: -50, z: -70, w: 80, d: 20 });
         currentMap.platforms.push({ x: 50, z: -70, w: 80, d: 20 });
         currentMap.platforms.push({ x: 0, z: -70, w: 20, d: 20 }); 
-
         currentMap.platforms.push({ x: 70, z: -50, w: 20, d: 80 }); 
         currentMap.platforms.push({ x: 70, z: 50, w: 20, d: 80 });
         currentMap.platforms.push({ x: 70, z: 0, w: 20, d: 20 }); 
-
         currentMap.platforms.push({ x: -70, z: -50, w: 20, d: 80 });
         currentMap.platforms.push({ x: -70, z: 50, w: 20, d: 80 });
         currentMap.platforms.push({ x: -70, z: 0, w: 20, d: 20 }); 
-
         currentMap.ramps.push({ x: 0, z: 45, dir: 'North' });
         currentMap.ramps.push({ x: 0, z: -45, dir: 'South' });
         currentMap.ramps.push({ x: 45, z: 0, dir: 'East' });
         currentMap.ramps.push({ x: -45, z: 0, dir: 'West' });
-
-        setFlagPos('blue', 0, 70, 13.5);
-        setFlagPos('red', 0, -70, 13.5);
-        addItem(0, 70, 13.5, 'railgun');
-        addItem(0, -70, 13.5, 'railgun');
+        setFlagPos('blue', 0, 70, 13.5); setFlagPos('red', 0, -70, 13.5);
+        addItem(0, 70, 13.5, 'railgun'); addItem(0, -70, 13.5, 'railgun');
 
     } else if (type === 'CROSS') {
         currentMap.platforms.push({ x: 0, z: 0, w: 40, d: 140 }); 
         currentMap.platforms.push({ x: 0, z: 0, w: 140, d: 40 }); 
-        
         currentMap.ramps.push({ x: 0, z: 85, dir: 'South' }); 
         currentMap.ramps.push({ x: 0, z: -85, dir: 'North' }); 
         currentMap.ramps.push({ x: 85, z: 0, dir: 'West' });
         currentMap.ramps.push({ x: -85, z: 0, dir: 'East' });
-
-        setFlagPos('blue', 0, 60, 13.5);
-        setFlagPos('red', 0, -60, 13.5);
+        setFlagPos('blue', 0, 60, 13.5); setFlagPos('red', 0, -60, 13.5);
         addItem(0, 0, 13.5, 'railgun');
         
     } else if (type === 'FORTS') {
         currentMap.platforms.push({ x: 0, z: 60, w: 100, d: 40 }); 
         currentMap.platforms.push({ x: 0, z: -60, w: 100, d: 40 }); 
         currentMap.platforms.push({ x: 0, z: 0, w: 20, d: 80 }); 
-
         currentMap.ramps.push({ x: 63, z: 60, dir: 'West' }); 
         currentMap.ramps.push({ x: -63, z: 60, dir: 'East' }); 
         currentMap.ramps.push({ x: 63, z: -60, dir: 'West' });
         currentMap.ramps.push({ x: -63, z: -60, dir: 'East' });
-
-        setFlagPos('blue', 0, 75, 13.5);
-        setFlagPos('red', 0, -75, 13.5);
-        addItem(0, 60, 13.5, 'railgun');
-        addItem(0, -60, 13.5, 'railgun');
+        setFlagPos('blue', 0, 75, 13.5); setFlagPos('red', 0, -75, 13.5);
+        addItem(0, 60, 13.5, 'railgun'); addItem(0, -60, 13.5, 'railgun');
     }
 
     // --- 2. OBSTACLES ---
@@ -120,16 +107,9 @@ function generateMap() {
         const rz = 25 + Math.random() * 45; 
         if(Math.abs(rx) < 15 || Math.abs(rz) < 15) continue; 
         if(Math.abs(rx - rz) < 10) continue; 
-
-        // RAMP CLEARANCE
         let blocksRamp = false;
-        for (let r of currentMap.ramps) {
-            if (Math.abs(rx - Math.abs(r.x)) < 20 && Math.abs(rz - Math.abs(r.z)) < 20) {
-                blocksRamp = true; break;
-            }
-        }
+        for (let r of currentMap.ramps) { if (Math.abs(rx - Math.abs(r.x)) < 20 && Math.abs(rz - Math.abs(r.z)) < 20) { blocksRamp = true; break; } }
         if (blocksRamp) continue; 
-
         const shape = Math.random();
         if (shape < 0.4) { addSymmetricalWall(rx, rz, 10, 10); } 
         else if (shape < 0.7) { if(Math.random()>0.5) addSymmetricalWall(rx, rz, 20, 5); else addSymmetricalWall(rx, rz, 5, 20); } 
@@ -149,10 +129,7 @@ function generateMap() {
 }
 
 // Helpers
-function setFlagPos(color, x, z, y) {
-    flags[color].x = x; flags[color].z = z; flags[color].y = y;
-    flags[color].homeX = x; flags[color].homeZ = z; flags[color].homeY = y;
-}
+function setFlagPos(color, x, z, y) { flags[color].x = x; flags[color].z = z; flags[color].y = y; flags[color].homeX = x; flags[color].homeZ = z; flags[color].homeY = y; }
 function addSymmetricalWall(x, z, w, d) { currentMap.walls.push({ x: x, z: z, w: w, d: d }); currentMap.walls.push({ x: -x, z: -z, w: w, d: d }); currentMap.walls.push({ x: -x, z: z, w: w, d: d }); currentMap.walls.push({ x: x, z: -z, w: w, d: d }); }
 function addItem(x, z, y, type) { const id = `item_${Object.keys(ammoPickups).length + Math.random()}`; ammoPickups[id] = { id, x, z, y, type, active: true }; }
 function addHealth(x, z, y) { const id = `hp_${Object.keys(healthPickups).length + Math.random()}`; healthPickups[id] = { id, x, z, y, active: true }; }
@@ -211,7 +188,6 @@ io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
     socket.emit('updatePlayerList', Object.keys(players).length);
     socket.emit('mapConfig', currentMap);
-    // NEW: Send current game mode on connect
     socket.emit('updateGameMode', gameMode);
 
     socket.on('joinGame', (data) => {
@@ -229,8 +205,8 @@ io.on('connection', (socket) => {
             if(data.fragLimit) fragLimit = parseInt(data.fragLimit);
             if(data.gameMode) {
                 gameMode = data.gameMode;
-                generateMap(); // Regenerate map to fit new mode
-                io.emit('updateGameMode', gameMode); // Update clients
+                generateMap(); 
+                io.emit('updateGameMode', gameMode); 
             }
         }
 
@@ -340,7 +316,7 @@ io.on('connection', (socket) => {
             gameMode = 'DM';
             generateMap();
             teamScores = { red: 0, blue: 0 };
-            io.emit('updateGameMode', gameMode); // Reset clients
+            io.emit('updateGameMode', gameMode); 
         }
     });
 });
